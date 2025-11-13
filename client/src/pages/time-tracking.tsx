@@ -16,9 +16,10 @@ import { useToast } from "@/hooks/use-toast";
 import { Plus, Search, Clock, Play, Square, Edit3, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import TimeModal from "@/components/time-tracking/time-modal";
+import { DEMO_ATTORNEY_ID } from "@/lib/constants";
 
 // Mock attorney ID - in real app this would come from auth context
-const ATTORNEY_ID = "attorney-1";
+const ATTORNEY_ID = DEMO_ATTORNEY_ID;
 
 const activityTypes = [
   { value: "all", label: "All Activities" },

@@ -8,7 +8,7 @@ import {
   type AiConversation, type InsertAiConversation
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, gte, lte, like, or, sql } from "drizzle-orm";
+import { eq, desc, and, gte, lte, like, or, sql, isNull } from "drizzle-orm";
 
 export interface IStorage {
   // Users
@@ -182,7 +182,7 @@ export class DatabaseStorage implements IStorage {
     const [activeEntry] = await db
       .select()
       .from(timeEntries)
-      .where(and(eq(timeEntries.attorneyId, attorneyId), eq(timeEntries.endTime, null)))
+      .where(and(eq(timeEntries.attorneyId, attorneyId), isNull(timeEntries.endTime)))
       .orderBy(desc(timeEntries.startTime));
     return activeEntry || undefined;
   }

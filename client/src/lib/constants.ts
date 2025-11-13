@@ -185,6 +185,9 @@ export const TIME_TRACKING = {
   maxContinuousHours: 12, // Maximum continuous tracking hours
 } as const;
 
+// Demo attorney ID for development
+export const DEMO_ATTORNEY_ID = "00000000-0000-0000-0000-000000000001";
+
 // Hawaii-specific legal resources
 export const HAWAII_RESOURCES = {
   courtSystem: "https://www.courts.state.hi.us",

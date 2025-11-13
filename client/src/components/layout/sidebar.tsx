@@ -51,9 +51,9 @@ export default function Sidebar() {
           
           return (
             <Link key={item.href} href={item.href}>
-              <a
+              <div
                 className={cn(
-                  "flex items-center space-x-3 px-3 py-2 rounded-md font-medium transition-colors",
+                  "flex items-center space-x-3 px-3 py-2 rounded-md font-medium transition-colors cursor-pointer",
                   isActive
                     ? "bg-primary text-primary-foreground"
                     : "text-foreground hover:bg-accent hover:text-accent-foreground"
@@ -67,7 +67,7 @@ export default function Sidebar() {
                     {item.badge}
                   </span>
                 )}
-              </a>
+              </div>
             </Link>
           );
         })}

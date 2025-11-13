@@ -7,9 +7,10 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import TimeModal from "./time-modal";
 import type { TimeEntry } from "@shared/schema";
+import { DEMO_ATTORNEY_ID } from "@/lib/constants";
 
 // Mock attorney ID - in real app this would come from auth context
-const ATTORNEY_ID = "attorney-1";
+const ATTORNEY_ID = DEMO_ATTORNEY_ID;
 
 export default function TimerWidget() {
   const [isModalOpen, setIsModalOpen] = useState(false);
