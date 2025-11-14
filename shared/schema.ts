@@ -383,6 +383,15 @@ export const insertActivityTemplateSchema = createInsertSchema(activityTemplates
   createdAt: true
 });
 
+export const insertInvoiceItemSchema = createInsertSchema(invoiceItems).omit({
+  id: true
+});
+
+export const insertComplianceDeadlineSchema = createInsertSchema(complianceDeadlines).omit({
+  id: true,
+  createdAt: true
+});
+
 // Type exports
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -416,3 +425,9 @@ export type InsertRateTable = z.infer<typeof insertRateTableSchema>;
 
 export type ActivityTemplate = typeof activityTemplates.$inferSelect;
 export type InsertActivityTemplate = z.infer<typeof insertActivityTemplateSchema>;
+
+export type InvoiceItem = typeof invoiceItems.$inferSelect;
+export type InsertInvoiceItem = z.infer<typeof insertInvoiceItemSchema>;
+
+export type ComplianceDeadline = typeof complianceDeadlines.$inferSelect;
+export type InsertComplianceDeadline = z.infer<typeof insertComplianceDeadlineSchema>;
