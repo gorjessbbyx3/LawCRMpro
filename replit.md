@@ -27,6 +27,40 @@ Enterprise-grade legal practice management system built for Hawaii attorneys wit
 - Username: `attorney`
 - Password: `demo123`
 
+#### Time Tracking & Invoicing (Phases 1-3)
+- **Attorney-specific time tracking** with UTBMS codes, pause/resume functionality
+- **Voice-to-text descriptions** for time entries using Web Speech API
+- **Activity templates** for common legal tasks
+- **Rate tables** with client-specific overrides
+- **Time entry status workflow**: draft → submitted → approved → billed
+- **Batch operations** for bulk approve/bill/delete
+- **Invoice generation** with PDF export using @react-pdf/renderer
+- **Analytics dashboard** with revenue tracking and time analysis
+
+#### Documents Management (Phase 4)
+- **Object storage integration** for secure file uploads/downloads
+- **Access Control List (ACL)**: Private documents with owner-based access
+- **Upload functionality** with ObjectUploader component and presigned URLs
+- **Download/delete** operations with ownership verification
+- **Search and filters** by case, client, document type, template status
+- **Hawaii court forms** section with downloadable templates
+- **Shared templates** accessible to all users while maintaining privacy for user documents
+
+**Security Features:**
+- Document listing filters by `uploadedById === userId OR isTemplate === true`
+- Download ACL enforcement prevents unauthorized access
+- Ownership verification on delete operations
+- All routes protected with authMiddleware
+
+#### Calendar & Events (Phase 5)
+- **Full CRUD operations** for calendar events (create, read, update, delete)
+- **Event associations** with cases and clients
+- **Event types**: hearing, filing deadline, consultation, court appearance, meeting, deposition, other
+- **Status tracking**: scheduled, confirmed, cancelled, completed
+- **Filters** by case, client, event type, status, date range
+- **Validation**: start time must be before end time
+- **Reminders endpoint** for upcoming events (client-side polling)
+
 ### 🚧 In Progress
 
 #### Clients CRUD Operations (Task 5)
@@ -36,16 +70,12 @@ Enterprise-grade legal practice management system built for Hawaii attorneys wit
 ### 📋 Pending Features
 
 1. **Cases Management** - Full CRUD with PDF export and case details
-2. **Time Tracking** - Timer functionality, inter-island travel tracking, edit/delete/filter/export
-3. **Invoicing** - Generate from time entries, PDF export, email, Hawaii GET tax calculator
-4. **Documents** - Object storage integration, upload/download, Hawaii court forms
-5. **Calendar** - Events CRUD, reminders, Hawaii court calendar integration
-6. **Messages** - Email integration, threading, templates
-7. **AI Assistant** - OpenAI integration for document analysis and legal research
-8. **Reports** - Revenue analysis, time tracking reports, case statistics
-9. **Hawaii Compliance** - CLE tracker, bar requirements, ethics deadlines
-10. **ECourt Kokua** - iframe integration to Hawaii eCourt system
-11. **Dashboard** - Wire up with real data and functionality
+2. **Messages** - Email integration, threading, templates
+3. **AI Assistant** - OpenAI integration for document analysis and legal research
+4. **Reports** - Revenue analysis, time tracking reports, case statistics
+5. **Hawaii Compliance** - CLE tracker, bar requirements, ethics deadlines
+6. **ECourt Kokua** - iframe integration to Hawaii eCourt system
+7. **Dashboard** - Wire up with real data and functionality
 
 ## Architecture
 
@@ -71,6 +101,20 @@ Enterprise-grade legal practice management system built for Hawaii attorneys wit
 - `POST /api/users` - Create new user (attorney/admin)
 - `PUT /api/users/:id` - Update user (attorney/admin)
 - `DELETE /api/users/:id` - Delete user (attorney/admin)
+
+#### Documents (Phase 4)
+- `GET /api/documents` - List documents (user's own + templates)
+- `PUT /api/documents` - Complete upload with metadata
+- `DELETE /api/documents/:id` - Delete document (owner only)
+- `POST /api/objects/upload` - Generate presigned upload URL
+- `GET /objects/*` - Download document (ACL enforced)
+
+#### Calendar (Phase 5)
+- `GET /api/calendar/events` - List events with filters
+- `POST /api/calendar/events` - Create new event
+- `PUT /api/calendar/events/:id` - Update event
+- `DELETE /api/calendar/events/:id` - Delete event
+- `GET /api/calendar/reminders` - Get upcoming events
 
 ### Database Schema
 
@@ -101,6 +145,14 @@ Enterprise-grade legal practice management system built for Hawaii attorneys wit
 
 ## Recent Changes (November 14, 2025)
 
+### Phase 4 & 5 Complete - Documents and Calendar (Latest)
+- **Documents backend**: Full CRUD with object storage integration and ACL enforcement
+- **Documents ACL security fix**: Listing now filters by `uploadedById === userId OR isTemplate === true`
+- **Documents frontend**: Fixed 7 LSP errors, upload UI with ObjectUploader, Hawaii court forms section
+- **Calendar backend**: Full CRUD with validation (start < end time), filters by case/client/type/status/dates
+- **Calendar frontend**: Event management with reminders endpoint
+- **Security**: All routes auth-protected, ownership verification on deletes, ACL on downloads
+
 ### User Management Auto-Update Feature
 - Added `refetchUser()` calls after profile updates
 - Profile changes now immediately update topbar, sidebar, and all components
@@ -113,6 +165,7 @@ Enterprise-grade legal practice management system built for Hawaii attorneys wit
 - Changed `/api/auth/me` to return null for unauthenticated (not 401)
 - Separated self-service profile routes from admin routes
 - Added password confirmation for all password changes
+- Document ACL prevents cross-user metadata disclosure
 
 ## Next Steps
 
