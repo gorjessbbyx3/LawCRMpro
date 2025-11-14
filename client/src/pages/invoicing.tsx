@@ -9,11 +9,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertInvoiceSchema, type Invoice, type Client, type Case } from "@shared/schema";
+import { insertInvoiceSchema, type Invoice, type Client, type Case, type TimeEntry } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Search, File, Eye, Download, Send } from "lucide-react";
 import { format } from "date-fns";
+import { downloadInvoicePDF } from "@/components/invoice-pdf";
 
 const statusColors = {
   draft: "secondary",
@@ -27,19 +28,48 @@ export default function Invoicing() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isGenerateDialogOpen, setIsGenerateDialogOpen] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: invoices = [], isLoading } = useQuery({
+  const { data: invoices = [], isLoading } = useQuery<Invoice[]>({
     queryKey: ["/api/invoices"],
   });
 
-  const { data: clients = [] } = useQuery({
+  const { data: clients = [] } = useQuery<Client[]>({
     queryKey: ["/api/clients"],
   });
 
-  const { data: cases = [] } = useQuery({
+  const { data: cases = [] } = useQuery<Case[]>({
     queryKey: ["/api/cases"],
+  });
+
+  const { data: readyToBillEntries = [] } = useQuery<TimeEntry[]>({
+    queryKey: ["/api/time-entries"],
+    select: (entries: TimeEntry[]) => entries.filter(entry => entry.status === 'ready_to_bill'),
+  });
+
+  const generateInvoiceMutation = useMutation({
+    mutationFn: async (data: { caseId: string; clientId: string }) => {
+      const response = await apiRequest("POST", "/api/invoices/generate", data);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/time-entries"] });
+      setIsGenerateDialogOpen(false);
+      toast({
+        title: "Success",
+        description: "Invoice generated from time entries successfully",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to generate invoice",
+        variant: "destructive",
+      });
+    },
   });
 
   const createInvoiceMutation = useMutation({
@@ -133,14 +163,74 @@ export default function Invoicing() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold text-foreground">Invoicing</h1>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button data-testid="button-create-invoice">
-              <Plus className="w-4 h-4 mr-2" />
-              Create Invoice
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
+        <div className="flex gap-2">
+          <Dialog open={isGenerateDialogOpen} onOpenChange={setIsGenerateDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" data-testid="button-generate-invoice" disabled={readyToBillEntries.length === 0}>
+                <File className="w-4 h-4 mr-2" />
+                Generate from Time Entries ({readyToBillEntries.length})
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Generate Invoice from Time Entries</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  This will generate an invoice from all time entries with status "Ready to Bill" ({readyToBillEntries.length} entries).
+                </p>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Select Case (Optional)</label>
+                  <Select onValueChange={(value) => {
+                    if (value === "all") {
+                      // Generate for all ready to bill entries
+                      // Backend will handle finding all clients
+                      generateInvoiceMutation.mutate({
+                        caseId: "",
+                        clientId: "",
+                      });
+                    } else {
+                      const caseItem = cases.find(c => c.id === value);
+                      if (caseItem) {
+                        generateInvoiceMutation.mutate({
+                          caseId: value,
+                          clientId: caseItem.clientId || "",
+                        });
+                      }
+                    }
+                  }}>
+                    <SelectTrigger data-testid="select-generate-case">
+                      <SelectValue placeholder="Select case" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All ready to bill entries</SelectItem>
+                      {cases.map((caseItem: Case) => (
+                        <SelectItem key={caseItem.id} value={caseItem.id}>
+                          {caseItem.title} - {caseItem.caseNumber}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button
+                  onClick={() => setIsGenerateDialogOpen(false)}
+                  variant="outline"
+                  className="w-full"
+                  data-testid="button-cancel-generate"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button data-testid="button-create-invoice">
+                <Plus className="w-4 h-4 mr-2" />
+                Create Invoice
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
             <DialogHeader>
               <DialogTitle>Create New Invoice</DialogTitle>
             </DialogHeader>
@@ -306,6 +396,7 @@ export default function Invoicing() {
             </Form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -453,7 +544,18 @@ export default function Invoicing() {
                           <Eye className="w-3 h-3 mr-1" />
                           View
                         </Button>
-                        <Button size="sm" variant="outline" data-testid={`button-download-${invoice.id}`}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            const client = clients.find(c => c.id === invoice.clientId);
+                            const caseInfo = cases.find(c => c.id === invoice.caseId);
+                            const clientName = client ? `${client.firstName} ${client.lastName}` : undefined;
+                            const caseName = caseInfo ? caseInfo.title : undefined;
+                            downloadInvoicePDF(invoice, clientName, caseName);
+                          }}
+                          data-testid={`button-download-${invoice.id}`}
+                        >
                           <Download className="w-3 h-3 mr-1" />
                           PDF
                         </Button>
