@@ -535,6 +535,93 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Object Storage for Documents (protected file uploading)
+  const { ObjectStorageService, ObjectNotFoundError } = await import("./objectStorage");
+  const { ObjectPermission } = await import("./objectAcl");
+
+  app.post("/api/objects/upload", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const objectStorageService = new ObjectStorageService();
+      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+      res.json({ uploadURL });
+    } catch (error) {
+      console.error("Error getting upload URL:", error);
+      res.status(500).json({ message: "Failed to get upload URL" });
+    }
+  });
+
+  app.get("/objects/*", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const objectStorageService = new ObjectStorageService();
+      const objectFile = await objectStorageService.getObjectEntityFile(req.path);
+      
+      const canAccess = await objectStorageService.canAccessObjectEntity({
+        objectFile,
+        userId: userId,
+        requestedPermission: ObjectPermission.READ,
+      });
+      
+      if (!canAccess) {
+        return res.sendStatus(401);
+      }
+      
+      objectStorageService.downloadObject(objectFile, res);
+    } catch (error) {
+      console.error("Error checking object access:", error);
+      if (error instanceof ObjectNotFoundError) {
+        return res.sendStatus(404);
+      }
+      return res.sendStatus(500);
+    }
+  });
+
+  app.put("/api/documents", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      if (!req.body.uploadURL) {
+        return res.status(400).json({ error: "uploadURL is required" });
+      }
+
+      const userId = req.user!.id;
+      const objectStorageService = new ObjectStorageService();
+      
+      const objectPath = await objectStorageService.trySetObjectEntityAclPolicy(
+        req.body.uploadURL,
+        {
+          owner: userId,
+          visibility: "private",
+        },
+      );
+
+      const documentData = {
+        name: req.body.name,
+        filename: req.body.filename,
+        filePath: objectPath,
+        fileSize: req.body.fileSize,
+        mimeType: req.body.mimeType,
+        caseId: req.body.caseId || null,
+        clientId: req.body.clientId || null,
+        uploadedById: userId,
+        documentType: req.body.documentType || null,
+        tags: req.body.tags || [],
+      };
+
+      const validatedData = insertDocumentSchema.parse(documentData);
+      const document = await storage.createDocument(validatedData);
+      
+      res.status(200).json({
+        objectPath: objectPath,
+        document: document,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid document data", errors: error.errors });
+      }
+      console.error("Error setting document metadata:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   // AI Assistant
   app.post("/api/ai/chat", async (req, res) => {
     try {
