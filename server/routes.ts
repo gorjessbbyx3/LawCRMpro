@@ -521,6 +521,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/messages/unread-count", async (req, res) => {
+    try {
+      const messages = await storage.getMessages();
+      const unreadCount = messages.filter(msg => !msg.isRead).length;
+      res.json({ count: unreadCount });
+    } catch (error) {
+      console.error("Error fetching unread count:", error);
+      res.status(500).json({ message: "Failed to fetch unread count" });
+    }
+  });
+
   app.post("/api/messages", async (req, res) => {
     try {
       const messageData = insertMessageSchema.parse(req.body);

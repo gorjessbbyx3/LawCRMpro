@@ -1,5 +1,4 @@
 import { Bell, LogOut, Settings, User } from "lucide-react";
-import TimerWidget from "@/components/time-tracking/timer-widget";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { 
   DropdownMenu, 
@@ -77,8 +76,6 @@ export default function TopBar() {
       </div>
       
       <div className="flex items-center space-x-4">
-        <TimerWidget />
-        
         {/* Notification Bell */}
         <div className="relative">
           <button 

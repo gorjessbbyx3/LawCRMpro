@@ -40,15 +40,15 @@ export default function TimeTracking() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: timeEntries = [], isLoading } = useQuery({
+  const { data: timeEntries = [], isLoading } = useQuery<TimeEntry[]>({
     queryKey: ["/api/time-entries"],
   });
 
-  const { data: cases = [] } = useQuery({
+  const { data: cases = [] } = useQuery<Case[]>({
     queryKey: ["/api/cases"],
   });
 
-  const { data: activeEntry } = useQuery({
+  const { data: activeEntry } = useQuery<TimeEntry | null>({
     queryKey: ["/api/time-entries/active", ATTORNEY_ID],
   });
 

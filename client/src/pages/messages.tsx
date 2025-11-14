@@ -27,11 +27,11 @@ export default function Messages() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: messages = [], isLoading } = useQuery({
+  const { data: messages = [], isLoading } = useQuery<Message[]>({
     queryKey: ["/api/messages"],
   });
 
-  const { data: cases = [] } = useQuery({
+  const { data: cases = [] } = useQuery<Case[]>({
     queryKey: ["/api/cases"],
   });
 

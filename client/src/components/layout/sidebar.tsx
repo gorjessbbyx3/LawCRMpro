@@ -1,4 +1,5 @@
 import { Link, useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { 
   BarChart3, 
@@ -23,7 +24,7 @@ const navItems = [
   { href: "/documents", label: "Documents", icon: FileText },
   { href: "/time-tracking", label: "Time Tracking", icon: Clock },
   { href: "/invoicing", label: "Invoicing", icon: File },
-  { href: "/messages", label: "Messages", icon: MessageSquare, badge: 3 },
+  { href: "/messages", label: "Messages", icon: MessageSquare },
   { href: "/ai-assistant", label: "AI Assistant", icon: Bot },
   { href: "/reports", label: "Reports", icon: ChartBar },
   { href: "/compliance", label: "HI Compliance", icon: Shield },
@@ -31,6 +32,12 @@ const navItems = [
 
 export default function Sidebar() {
   const [location] = useLocation();
+  
+  const { data: unreadData } = useQuery<{ count: number }>({
+    queryKey: ["/api/messages/unread-count"],
+  });
+
+  const unreadCount = unreadData?.count || 0;
 
   return (
     <aside className="w-64 bg-card border-r border-border flex-shrink-0">
@@ -62,9 +69,9 @@ export default function Sidebar() {
               >
                 <Icon className="w-5 h-5" />
                 <span>{item.label}</span>
-                {item.badge && (
-                  <span className="bg-primary text-primary-foreground px-2 py-1 text-xs rounded-full ml-auto">
-                    {item.badge}
+                {item.label === "Messages" && unreadCount > 0 && (
+                  <span className="bg-primary text-primary-foreground px-2 py-1 text-xs rounded-full ml-auto" data-testid="unread-badge">
+                    {unreadCount}
                   </span>
                 )}
               </div>
