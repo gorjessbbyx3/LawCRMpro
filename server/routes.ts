@@ -108,6 +108,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Update own profile (any authenticated user)
+  app.put("/api/auth/profile", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const updateData: any = { ...req.body };
+      delete updateData.id;
+      delete updateData.createdAt;
+      delete updateData.updatedAt;
+      delete updateData.role; // Users cannot change their own role
+      delete updateData.isActive; // Users cannot activate/deactivate themselves
+      delete updateData.password; // Use separate password change endpoint
+
+      const user = await storage.updateUser(req.user!.id, updateData);
+      
+      res.json({
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        barNumber: user.barNumber,
+        phone: user.phone,
+        isActive: user.isActive
+      });
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      res.status(500).json({ error: "Failed to update profile" });
+    }
+  });
+
+  // Change own password (any authenticated user)
+  app.put("/api/auth/password", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const { password } = req.body;
+      
+      if (!password || typeof password !== 'string' || password.length < 6) {
+        return res.status(400).json({ error: "Password must be at least 6 characters" });
+      }
+
+      const hashedPassword = await hashPassword(password);
+      await storage.updateUser(req.user!.id, { password: hashedPassword });
+      
+      res.json({ message: "Password updated successfully" });
+    } catch (error) {
+      console.error("Error changing password:", error);
+      res.status(500).json({ error: "Failed to change password" });
+    }
+  });
+
   // User Management (protected, admin only)
   app.get("/api/users", authMiddleware, requireRole('attorney', 'admin'), async (req, res) => {
     try {

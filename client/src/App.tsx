@@ -17,6 +17,7 @@ import Messages from "@/pages/messages";
 import AiAssistant from "@/pages/ai-assistant";
 import Reports from "@/pages/reports";
 import Compliance from "@/pages/compliance";
+import Settings from "@/pages/settings";
 import Sidebar from "@/components/layout/sidebar";
 import TopBar from "@/components/layout/topbar";
 
@@ -194,6 +195,19 @@ function Router() {
               <TopBar />
               <div className="flex-1 overflow-y-auto">
                 <Compliance />
+              </div>
+            </main>
+          </div>
+        )} />
+      </Route>
+      <Route path="/settings">
+        <ProtectedRoute component={() => (
+          <div className="flex h-screen bg-background">
+            <Sidebar />
+            <main className="flex-1 overflow-hidden flex flex-col">
+              <TopBar />
+              <div className="flex-1 overflow-y-auto">
+                <Settings />
               </div>
             </main>
           </div>
