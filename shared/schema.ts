@@ -92,6 +92,7 @@ export const timeEntries = pgTable("time_entries", {
   isBillable: boolean("is_billable").default(true),
   status: text("status").default("draft"), // draft, ready_to_bill, invoiced, paid
   invoiceId: uuid("invoice_id").references(() => invoices.id),
+  calendarEventId: uuid("calendar_event_id").references(() => calendarEvents.id, { onDelete: "set null" }), // Linked calendar event
   isInvoiced: boolean("is_invoiced").default(false),
   editHistory: jsonb("edit_history"), // Audit trail for compliance
   createdAt: timestamp("created_at").defaultNow()
@@ -143,7 +144,10 @@ export const documents = pgTable("documents", {
   createdAt: timestamp("created_at").defaultNow()
 });
 
-// Calendar events
+// Calendar events  
+// Note: Partial unique index on (source_type, source_id) WHERE source_type = 'time_entry' 
+// must be created manually: CREATE UNIQUE INDEX idx_calendar_events_time_entry_unique 
+// ON calendar_events(source_type, source_id) WHERE source_type = 'time_entry';
 export const calendarEvents = pgTable("calendar_events", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   title: text("title").notNull(),
@@ -151,6 +155,8 @@ export const calendarEvents = pgTable("calendar_events", {
   startTime: timestamp("start_time").notNull(),
   endTime: timestamp("end_time").notNull(),
   eventType: text("event_type").notNull(), // court_date, meeting, deadline, consultation
+  sourceType: text("source_type"), // manual, time_entry, case_milestone, ai_suggested
+  sourceId: uuid("source_id"), // Foreign key to source record
   caseId: uuid("case_id").references(() => cases.id),
   clientId: uuid("client_id").references(() => clients.id),
   attendeeIds: uuid("attendee_ids").array(),

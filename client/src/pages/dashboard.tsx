@@ -55,8 +55,8 @@ export default function Dashboard() {
         <MetricCard
           title="Court Dates"
           value={metrics?.upcomingCourtDates || 0}
-          change="2 this week"
-          trend="warning"
+          change={`${metrics?.upcomingCourtDates || 0} this week`}
+          trend={metrics?.upcomingCourtDates > 0 ? "warning" : "neutral"}
           icon="gavel"
           color="red"
         />
