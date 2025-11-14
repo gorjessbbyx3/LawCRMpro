@@ -5,7 +5,7 @@ import {
   insertClientSchema, insertCaseSchema, insertTimeEntrySchema, 
   insertInvoiceSchema, insertDocumentSchema, insertCalendarEventSchema,
   insertMessageSchema, insertAiConversationSchema, insertUserSchema,
-  insertRateTableSchema, insertActivityTemplateSchema
+  insertRateTableSchema, insertActivityTemplateSchema, insertComplianceDeadlineSchema
 } from "@shared/schema";
 import { z } from "zod";
 import { 
@@ -764,6 +764,76 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       console.error("Error creating message:", error);
       res.status(500).json({ message: "Failed to create message" });
+    }
+  });
+
+  // Compliance Deadlines
+  app.get("/api/compliance/deadlines", async (req, res) => {
+    try {
+      const deadlines = await storage.getComplianceDeadlines();
+      res.json(deadlines);
+    } catch (error) {
+      console.error("Error fetching compliance deadlines:", error);
+      res.status(500).json({ message: "Failed to fetch compliance deadlines" });
+    }
+  });
+
+  app.post("/api/compliance/deadlines", async (req, res) => {
+    try {
+      const deadlineData = insertComplianceDeadlineSchema.parse(req.body);
+      const deadline = await storage.createComplianceDeadline(deadlineData);
+      res.status(201).json(deadline);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid compliance deadline data", errors: error.errors });
+      }
+      console.error("Error creating compliance deadline:", error);
+      res.status(500).json({ message: "Failed to create compliance deadline" });
+    }
+  });
+
+  app.put("/api/compliance/deadlines/:id", async (req, res) => {
+    try {
+      const deadlineData = insertComplianceDeadlineSchema.partial().parse(req.body);
+      const deadline = await storage.updateComplianceDeadline(req.params.id, deadlineData);
+      res.json(deadline);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid compliance deadline data", errors: error.errors });
+      }
+      console.error("Error updating compliance deadline:", error);
+      res.status(500).json({ message: "Failed to update compliance deadline" });
+    }
+  });
+
+  app.patch("/api/compliance/deadlines/:id/complete", async (req, res) => {
+    try {
+      const deadline = await storage.getComplianceDeadline(req.params.id);
+      if (!deadline) {
+        return res.status(404).json({ message: "Compliance deadline not found" });
+      }
+
+      // Toggle completion status
+      const isCompleted = deadline.status === "completed";
+      const updatedDeadline = await storage.updateComplianceDeadline(req.params.id, {
+        status: isCompleted ? "pending" : "completed",
+        completedAt: isCompleted ? null : new Date()
+      });
+      
+      res.json(updatedDeadline);
+    } catch (error) {
+      console.error("Error toggling compliance deadline:", error);
+      res.status(500).json({ message: "Failed to toggle compliance deadline" });
+    }
+  });
+
+  app.delete("/api/compliance/deadlines/:id", async (req, res) => {
+    try {
+      await storage.deleteComplianceDeadline(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting compliance deadline:", error);
+      res.status(500).json({ message: "Failed to delete compliance deadline" });
     }
   });
 

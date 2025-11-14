@@ -7,7 +7,8 @@ import {
   type Invoice, type InsertInvoice, type Document, type InsertDocument,
   type CalendarEvent, type InsertCalendarEvent, type Message, type InsertMessage,
   type AiConversation, type InsertAiConversation,
-  type RateTable, type InsertRateTable, type ActivityTemplate, type InsertActivityTemplate
+  type RateTable, type InsertRateTable, type ActivityTemplate, type InsertActivityTemplate,
+  type ComplianceDeadline, type InsertComplianceDeadline
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, like, or, sql, isNull, inArray } from "drizzle-orm";
@@ -104,6 +105,13 @@ export interface IStorage {
 
   // Invoice Generation
   generateInvoiceFromTimeEntries(clientId: string, caseId: string, timeEntryIds: string[], dueInDays: number): Promise<Invoice>;
+
+  // Compliance Deadlines
+  getComplianceDeadlines(): Promise<ComplianceDeadline[]>;
+  getComplianceDeadline(id: string): Promise<ComplianceDeadline | undefined>;
+  createComplianceDeadline(deadline: InsertComplianceDeadline): Promise<ComplianceDeadline>;
+  updateComplianceDeadline(id: string, deadline: Partial<InsertComplianceDeadline>): Promise<ComplianceDeadline>;
+  deleteComplianceDeadline(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -657,6 +665,34 @@ export class DatabaseStorage implements IStorage {
       .where(inArray(timeEntries.id, timeEntryIds));
 
     return invoice;
+  }
+
+  // Compliance Deadlines
+  async getComplianceDeadlines(): Promise<ComplianceDeadline[]> {
+    return await db.select().from(complianceDeadlines).orderBy(complianceDeadlines.dueDate);
+  }
+
+  async getComplianceDeadline(id: string): Promise<ComplianceDeadline | undefined> {
+    const [deadline] = await db.select().from(complianceDeadlines).where(eq(complianceDeadlines.id, id));
+    return deadline || undefined;
+  }
+
+  async createComplianceDeadline(deadline: InsertComplianceDeadline): Promise<ComplianceDeadline> {
+    const [newDeadline] = await db.insert(complianceDeadlines).values(deadline).returning();
+    return newDeadline;
+  }
+
+  async updateComplianceDeadline(id: string, deadline: Partial<InsertComplianceDeadline>): Promise<ComplianceDeadline> {
+    const [updatedDeadline] = await db
+      .update(complianceDeadlines)
+      .set(deadline)
+      .where(eq(complianceDeadlines.id, id))
+      .returning();
+    return updatedDeadline;
+  }
+
+  async deleteComplianceDeadline(id: string): Promise<void> {
+    await db.delete(complianceDeadlines).where(eq(complianceDeadlines.id, id));
   }
 }
 
