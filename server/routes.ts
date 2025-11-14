@@ -470,12 +470,74 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch("/api/time-entries/:id/stop", async (req, res) => {
     try {
       const timeEntry = await storage.stopTimeEntry(req.params.id);
+      
+      // Auto-create calendar event for this time entry
+      if (timeEntry && timeEntry.startTime && timeEntry.endTime && timeEntry.caseId) {
+        try {
+          const eventType = getEventTypeFromActivity(timeEntry.activity);
+          const calendarEvent = await storage.createCalendarEvent({
+            title: `${timeEntry.activity}: ${timeEntry.description || 'Time tracked'}`.substring(0, 200),
+            description: timeEntry.description || `Time tracking entry for ${timeEntry.activity}`,
+            startTime: timeEntry.startTime,
+            endTime: timeEntry.endTime,
+            eventType,
+            sourceType: 'time_entry',
+            sourceId: timeEntry.id,
+            caseId: timeEntry.caseId,
+            isAllDay: false,
+            reminderMinutes: 0, // No reminder for completed events
+            status: 'completed',
+          });
+          
+          // Link the calendar event back to the time entry
+          if (calendarEvent) {
+            await storage.updateTimeEntry(timeEntry.id, {
+              calendarEventId: calendarEvent.id
+            });
+            console.log(`[AUTO-SYNC SUCCESS] Created calendar event ${calendarEvent.id} for time entry ${timeEntry.id}`);
+          } else {
+            const errorMsg = `Calendar event creation returned null for time entry ${timeEntry.id}`;
+            console.error(`[AUTO-SYNC ERROR] ${errorMsg}`);
+            return res.status(500).json({ 
+              message: "Timer stopped but calendar sync failed", 
+              timeEntry,
+              syncError: errorMsg
+            });
+          }
+        } catch (calendarError) {
+          console.error("[AUTO-SYNC ERROR] Failed to create calendar event:", calendarError);
+          console.error("Error details:", calendarError instanceof Error ? calendarError.message : String(calendarError));
+          console.error("Time entry:", { id: timeEntry.id, activity: timeEntry.activity });
+          return res.status(500).json({ 
+            message: "Timer stopped but calendar sync failed",
+            timeEntry,
+            syncError: calendarError instanceof Error ? calendarError.message : String(calendarError)
+          });
+        }
+      }
+      
       res.json(timeEntry);
     } catch (error) {
       console.error("Error stopping timer:", error);
       res.status(500).json({ message: "Failed to stop timer" });
     }
   });
+
+  // Helper function to map activity types to calendar event types
+  function getEventTypeFromActivity(activity: string): string {
+    const activityLower = activity.toLowerCase();
+    if (activityLower.includes('court') || activityLower.includes('hearing')) {
+      return 'court_date';
+    } else if (activityLower.includes('meeting') || activityLower.includes('conference')) {
+      return 'meeting';
+    } else if (activityLower.includes('deadline') || activityLower.includes('filing')) {
+      return 'deadline';
+    } else if (activityLower.includes('consultation') || activityLower.includes('interview')) {
+      return 'consultation';
+    } else {
+      return 'meeting'; // Default fallback
+    }
+  }
 
   // Batch Operations
   app.patch("/api/time-entries/batch", async (req, res) => {
