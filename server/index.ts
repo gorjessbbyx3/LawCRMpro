@@ -18,7 +18,7 @@ async function runMigrations() {
     await db.execute(sql.raw(migrationSQL));
     log('Database migrations applied successfully');
   } catch (error) {
-    log('Migration already applied or error:', error);
+    log(`Migration already applied or error: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
