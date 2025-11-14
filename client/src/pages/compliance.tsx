@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -9,23 +9,25 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import type { ComplianceDeadline } from "@shared/schema";
 import { 
   Shield, 
   AlertTriangle, 
   CheckCircle, 
   Calendar, 
-  FileText, 
   Plus, 
   Clock,
   ExternalLink,
   BookOpen,
   Scale,
-  Gavel
+  Pencil,
+  Trash2
 } from "lucide-react";
 import { format, isAfter, isBefore, addDays } from "date-fns";
 
@@ -34,47 +36,8 @@ const complianceSchema = z.object({
   description: z.string().optional(),
   dueDate: z.string().min(1, "Due date is required"),
   deadlineType: z.enum(["bar_requirement", "court_filing", "ethics", "continuing_education"]),
-  caseId: z.string().optional(),
+  caseId: z.string().optional().nullable(),
 });
-
-const hawaiiComplianceItems = [
-  {
-    id: "bar-dues",
-    title: "Hawaii Bar Annual Dues",
-    description: "Annual membership dues for Hawaii State Bar",
-    dueDate: "2024-12-31",
-    type: "bar_requirement",
-    status: "pending",
-    priority: "high",
-  },
-  {
-    id: "cle-credits",
-    title: "Continuing Legal Education Credits",
-    description: "Complete required CLE credits for license renewal",
-    dueDate: "2024-12-31", 
-    type: "continuing_education",
-    status: "pending",
-    priority: "high",
-  },
-  {
-    id: "trust-reconciliation",
-    title: "Trust Account Reconciliation",
-    description: "Monthly trust account reconciliation and reporting",
-    dueDate: "2024-12-05",
-    type: "ethics",
-    status: "overdue",
-    priority: "urgent",
-  },
-  {
-    id: "ethics-training",
-    title: "Legal Ethics Training",
-    description: "Required annual ethics training course",
-    dueDate: "2024-11-30",
-    type: "ethics", 
-    status: "completed",
-    priority: "medium",
-  },
-];
 
 const hawaiiResources = [
   {
@@ -105,12 +68,16 @@ const hawaiiResources = [
 
 export default function Compliance() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingDeadline, setEditingDeadline] = useState<ComplianceDeadline | null>(null);
   const [filterStatus, setFilterStatus] = useState("all");
   const { toast } = useToast();
-  const queryClient = useQueryClient();
 
   const { data: cases = [] } = useQuery({
     queryKey: ["/api/cases"],
+  });
+
+  const { data: deadlines = [], isLoading } = useQuery<ComplianceDeadline[]>({
+    queryKey: ["/api/compliance/deadlines"],
   });
 
   const form = useForm({
@@ -119,37 +86,109 @@ export default function Compliance() {
       title: "",
       description: "",
       dueDate: "",
-      deadlineType: "bar_requirement",
+      deadlineType: "bar_requirement" as const,
       caseId: "",
     },
   });
 
   const createDeadlineMutation = useMutation({
-    mutationFn: async (data: any) => {
-      // Since we don't have a compliance deadlines endpoint in the current API,
-      // we'll simulate the creation for now
-      console.log("Creating compliance deadline:", data);
-      return data;
+    mutationFn: async (data: z.infer<typeof complianceSchema>) => {
+      if (editingDeadline) {
+        return await apiRequest(`/api/compliance/deadlines/${editingDeadline.id}`, {
+          method: "PUT",
+          body: JSON.stringify(data),
+        });
+      } else {
+        return await apiRequest("/api/compliance/deadlines", {
+          method: "POST",
+          body: JSON.stringify(data),
+        });
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/compliance/deadlines"] });
       setIsDialogOpen(false);
+      setEditingDeadline(null);
       form.reset();
       toast({
         title: "Success",
-        description: "Compliance deadline added successfully",
+        description: editingDeadline ? "Compliance deadline updated successfully" : "Compliance deadline added successfully",
       });
     },
     onError: () => {
       toast({
         title: "Error", 
-        description: "Failed to add compliance deadline",
+        description: "Failed to save compliance deadline",
         variant: "destructive",
       });
     },
   });
 
-  const onSubmit = (data: any) => {
+  const toggleCompleteMutation = useMutation({
+    mutationFn: async (deadlineId: string) => {
+      return await apiRequest(`/api/compliance/deadlines/${deadlineId}/complete`, {
+        method: "PATCH",
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/compliance/deadlines"] });
+      toast({
+        title: "Success",
+        description: "Compliance deadline updated",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update compliance deadline",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteDeadlineMutation = useMutation({
+    mutationFn: async (deadlineId: string) => {
+      return await apiRequest(`/api/compliance/deadlines/${deadlineId}`, {
+        method: "DELETE",
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/compliance/deadlines"] });
+      toast({
+        title: "Success",
+        description: "Compliance deadline deleted",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to delete compliance deadline",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleEdit = (deadline: ComplianceDeadline) => {
+    setEditingDeadline(deadline);
+    form.reset({
+      title: deadline.title,
+      description: deadline.description || "",
+      dueDate: deadline.dueDate,
+      deadlineType: deadline.deadlineType as any,
+      caseId: deadline.caseId || "",
+    });
+    setIsDialogOpen(true);
+  };
+
+  const handleDialogClose = (open: boolean) => {
+    setIsDialogOpen(open);
+    if (!open) {
+      setEditingDeadline(null);
+      form.reset();
+    }
+  };
+
+  const onSubmit = (data: z.infer<typeof complianceSchema>) => {
     createDeadlineMutation.mutate(data);
   };
 
@@ -166,28 +205,13 @@ export default function Compliance() {
     }
   };
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case "urgent":
-        return "bg-red-100 text-red-800 border-red-200";
-      case "high":
-        return "bg-orange-100 text-orange-800 border-orange-200";
-      case "medium":
-        return "bg-yellow-100 text-yellow-800 border-yellow-200";
-      case "low":
-        return "bg-green-100 text-green-800 border-green-200";
-      default:
-        return "bg-gray-100 text-gray-800 border-gray-200";
-    }
-  };
-
-  const filteredItems = hawaiiComplianceItems.filter(item => 
+  const filteredItems = deadlines.filter((item: ComplianceDeadline) => 
     filterStatus === "all" || item.status === filterStatus
   );
 
-  const overdueCount = hawaiiComplianceItems.filter(item => item.status === "overdue").length;
-  const pendingCount = hawaiiComplianceItems.filter(item => item.status === "pending").length;
-  const completedCount = hawaiiComplianceItems.filter(item => item.status === "completed").length;
+  const overdueCount = deadlines.filter((item: ComplianceDeadline) => item.status === "overdue").length;
+  const pendingCount = deadlines.filter((item: ComplianceDeadline) => item.status === "pending").length;
+  const completedCount = deadlines.filter((item: ComplianceDeadline) => item.status === "completed").length;
 
   return (
     <div className="p-6">
@@ -199,7 +223,7 @@ export default function Compliance() {
             <p className="text-sm text-muted-foreground">Track legal requirements and deadlines</p>
           </div>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <Dialog open={isDialogOpen} onOpenChange={handleDialogClose}>
           <DialogTrigger asChild>
             <Button data-testid="button-add-compliance">
               <Plus className="w-4 h-4 mr-2" />
@@ -208,7 +232,7 @@ export default function Compliance() {
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Add Compliance Deadline</DialogTitle>
+              <DialogTitle>{editingDeadline ? "Edit" : "Add"} Compliance Deadline</DialogTitle>
             </DialogHeader>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -275,11 +299,11 @@ export default function Compliance() {
                   )}
                 />
                 <div className="flex justify-end space-x-2">
-                  <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
+                  <Button type="button" variant="outline" onClick={() => handleDialogClose(false)}>
                     Cancel
                   </Button>
                   <Button type="submit" disabled={createDeadlineMutation.isPending} data-testid="button-save-deadline">
-                    {createDeadlineMutation.isPending ? "Saving..." : "Save Deadline"}
+                    {createDeadlineMutation.isPending ? "Saving..." : editingDeadline ? "Update" : "Save Deadline"}
                   </Button>
                 </div>
               </form>
@@ -367,51 +391,91 @@ export default function Compliance() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              {filteredItems.map((item) => {
-                const dueDate = new Date(item.dueDate);
-                const isOverdue = isBefore(dueDate, new Date()) && item.status !== "completed";
-                const isDueSoon = isAfter(dueDate, new Date()) && isBefore(dueDate, addDays(new Date(), 30));
+              {isLoading ? (
+                <div className="text-center text-muted-foreground py-8">Loading deadlines...</div>
+              ) : filteredItems.length === 0 ? (
+                <div className="text-center text-muted-foreground py-8">
+                  No compliance deadlines found. Add one to get started.
+                </div>
+              ) : (
+                filteredItems.map((item: ComplianceDeadline) => {
+                  const dueDate = new Date(item.dueDate);
+                  const isOverdue = isBefore(dueDate, new Date()) && item.status !== "completed";
+                  const isDueSoon = isAfter(dueDate, new Date()) && isBefore(dueDate, addDays(new Date(), 30));
 
-                return (
-                  <div
-                    key={item.id}
-                    className={`p-4 border rounded-lg ${getPriorityColor(item.priority)}`}
-                    data-testid={`compliance-item-${item.id}`}
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex-1">
-                        <h3 className="font-medium" data-testid={`compliance-title-${item.id}`}>
-                          {item.title}
-                        </h3>
-                        <p className="text-sm opacity-80 mt-1" data-testid={`compliance-description-${item.id}`}>
-                          {item.description}
-                        </p>
+                  return (
+                    <div
+                      key={item.id}
+                      className="p-4 border rounded-lg"
+                      data-testid={`compliance-item-${item.id}`}
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex items-start space-x-3 flex-1">
+                          <Checkbox
+                            checked={item.status === "completed"}
+                            onCheckedChange={() => toggleCompleteMutation.mutate(item.id)}
+                            data-testid={`checkbox-complete-${item.id}`}
+                            className="mt-1"
+                          />
+                          <div className="flex-1">
+                            <h3 className={`font-medium ${item.status === "completed" ? "line-through text-muted-foreground" : ""}`} data-testid={`compliance-title-${item.id}`}>
+                              {item.title}
+                            </h3>
+                            {item.description && (
+                              <p className="text-sm text-muted-foreground mt-1" data-testid={`compliance-description-${item.id}`}>
+                                {item.description}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Badge variant={getStatusColor(item.status)} data-testid={`compliance-status-${item.id}`}>
+                            {item.status}
+                          </Badge>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => handleEdit(item)}
+                            data-testid={`button-edit-${item.id}`}
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => {
+                              if (confirm("Are you sure you want to delete this deadline?")) {
+                                deleteDeadlineMutation.mutate(item.id);
+                              }
+                            }}
+                            data-testid={`button-delete-${item.id}`}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </div>
-                      <Badge variant={getStatusColor(item.status)} data-testid={`compliance-status-${item.id}`}>
-                        {item.status}
-                      </Badge>
-                    </div>
-                    
-                    <div className="flex items-center justify-between text-sm">
-                      <div className="flex items-center space-x-2">
-                        <Calendar className="w-4 h-4" />
-                        <span data-testid={`compliance-due-date-${item.id}`}>
-                          Due: {format(dueDate, "MMM d, yyyy")}
-                        </span>
-                        {isOverdue && (
-                          <Badge variant="destructive" className="text-xs">Overdue</Badge>
-                        )}
-                        {isDueSoon && item.status !== "completed" && (
-                          <Badge variant="secondary" className="text-xs">Due Soon</Badge>
-                        )}
+                      
+                      <div className="flex items-center justify-between text-sm ml-8">
+                        <div className="flex items-center space-x-2">
+                          <Calendar className="w-4 h-4" />
+                          <span data-testid={`compliance-due-date-${item.id}`}>
+                            Due: {format(dueDate, "MMM d, yyyy")}
+                          </span>
+                          {isOverdue && (
+                            <Badge variant="destructive" className="text-xs">Overdue</Badge>
+                          )}
+                          {isDueSoon && item.status !== "completed" && (
+                            <Badge variant="secondary" className="text-xs">Due Soon</Badge>
+                          )}
+                        </div>
+                        <Badge variant="outline" className="capitalize text-xs">
+                          {item.deadlineType.replace('_', ' ')}
+                        </Badge>
                       </div>
-                      <Badge variant="outline" className="capitalize text-xs">
-                        {item.type.replace('_', ' ')}
-                      </Badge>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </CardContent>
           </Card>
         </div>
