@@ -94,15 +94,9 @@ export default function Compliance() {
   const createDeadlineMutation = useMutation({
     mutationFn: async (data: z.infer<typeof complianceSchema>) => {
       if (editingDeadline) {
-        return await apiRequest(`/api/compliance/deadlines/${editingDeadline.id}`, {
-          method: "PUT",
-          body: JSON.stringify(data),
-        });
+        return await apiRequest("PUT", `/api/compliance/deadlines/${editingDeadline.id}`, data);
       } else {
-        return await apiRequest("/api/compliance/deadlines", {
-          method: "POST",
-          body: JSON.stringify(data),
-        });
+        return await apiRequest("POST", "/api/compliance/deadlines", data);
       }
     },
     onSuccess: () => {
@@ -126,9 +120,7 @@ export default function Compliance() {
 
   const toggleCompleteMutation = useMutation({
     mutationFn: async (deadlineId: string) => {
-      return await apiRequest(`/api/compliance/deadlines/${deadlineId}/complete`, {
-        method: "PATCH",
-      });
+      return await apiRequest("PATCH", `/api/compliance/deadlines/${deadlineId}/complete`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/compliance/deadlines"] });
@@ -148,9 +140,7 @@ export default function Compliance() {
 
   const deleteDeadlineMutation = useMutation({
     mutationFn: async (deadlineId: string) => {
-      return await apiRequest(`/api/compliance/deadlines/${deadlineId}`, {
-        method: "DELETE",
-      });
+      return await apiRequest("DELETE", `/api/compliance/deadlines/${deadlineId}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/compliance/deadlines"] });
@@ -429,8 +419,8 @@ export default function Compliance() {
                           </div>
                         </div>
                         <div className="flex items-center space-x-2">
-                          <Badge variant={getStatusColor(item.status)} data-testid={`compliance-status-${item.id}`}>
-                            {item.status}
+                          <Badge variant={getStatusColor(item.status || "pending")} data-testid={`compliance-status-${item.id}`}>
+                            {item.status || "pending"}
                           </Badge>
                           <Button
                             size="icon"
@@ -444,7 +434,7 @@ export default function Compliance() {
                             size="icon"
                             variant="ghost"
                             onClick={() => {
-                              if (confirm("Are you sure you want to delete this deadline?")) {
+                              if (window.confirm("Are you sure you want to delete this deadline?")) {
                                 deleteDeadlineMutation.mutate(item.id);
                               }
                             }}
