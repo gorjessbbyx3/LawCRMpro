@@ -22,11 +22,11 @@ export default function Cases() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: cases = [], isLoading } = useQuery({
+  const { data: cases = [], isLoading } = useQuery<Case[]>({
     queryKey: ["/api/cases"],
   });
 
-  const { data: clients = [] } = useQuery({
+  const { data: clients = [] } = useQuery<Client[]>({
     queryKey: ["/api/clients"],
   });
 

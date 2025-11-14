@@ -18,27 +18,34 @@ import {
 import { format, subDays, startOfMonth, endOfMonth } from "date-fns";
 import type { Case, Client, TimeEntry, Invoice } from "@shared/schema";
 
+// Safe date parsing helper to prevent Invalid Date issues
+function safeDate(value: Date | string | null | undefined): Date | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 export default function Reports() {
   const [dateRange, setDateRange] = useState("30");
   const [reportType, setReportType] = useState("overview");
 
-  const { data: cases = [] } = useQuery({
+  const { data: cases = [] } = useQuery<Case[]>({
     queryKey: ["/api/cases"],
   });
 
-  const { data: clients = [] } = useQuery({
+  const { data: clients = [] } = useQuery<Client[]>({
     queryKey: ["/api/clients"],
   });
 
-  const { data: timeEntries = [] } = useQuery({
+  const { data: timeEntries = [] } = useQuery<TimeEntry[]>({
     queryKey: ["/api/time-entries"],
   });
 
-  const { data: invoices = [] } = useQuery({
+  const { data: invoices = [] } = useQuery<Invoice[]>({
     queryKey: ["/api/invoices"],
   });
 
-  const { data: dashboardMetrics } = useQuery({
+  const { data: dashboardMetrics } = useQuery<{ activeCases?: number }>({
     queryKey: ["/api/dashboard/metrics"],
   });
 
@@ -56,36 +63,38 @@ export default function Reports() {
 
   // Filter data by date range
   const filteredTimeEntries = timeEntries.filter((entry: TimeEntry) => {
-    const entryDate = new Date(entry.startTime);
+    const entryDate = safeDate(entry.startTime);
+    if (!entryDate) return false;
     return entryDate >= startDate && entryDate <= endDate;
   });
 
   const filteredInvoices = invoices.filter((invoice: Invoice) => {
-    const invoiceDate = new Date(invoice.issueDate);
+    const invoiceDate = safeDate(invoice.issueDate);
+    if (!invoiceDate) return false;
     return invoiceDate >= startDate && invoiceDate <= endDate;
   });
 
   // Calculate metrics
   const totalBillableHours = filteredTimeEntries
-    .filter(entry => entry.isBillable && entry.duration)
-    .reduce((sum, entry) => sum + (entry.duration || 0), 0);
+    .filter((entry: TimeEntry) => entry.isBillable && entry.duration)
+    .reduce((sum: number, entry: TimeEntry) => sum + (entry.duration || 0), 0);
 
   const totalRevenue = filteredInvoices
-    .filter(invoice => invoice.status === "paid")
-    .reduce((sum, invoice) => sum + parseFloat(invoice.total.toString()), 0);
+    .filter((invoice: Invoice) => invoice.status === "paid")
+    .reduce((sum: number, invoice: Invoice) => sum + parseFloat(invoice.total.toString()), 0);
 
   const pendingRevenue = filteredInvoices
-    .filter(invoice => invoice.status === "sent")
-    .reduce((sum, invoice) => sum + parseFloat(invoice.total.toString()), 0);
+    .filter((invoice: Invoice) => invoice.status === "sent")
+    .reduce((sum: number, invoice: Invoice) => sum + parseFloat(invoice.total.toString()), 0);
 
   const overdueRevenue = filteredInvoices
-    .filter(invoice => invoice.status === "overdue")
-    .reduce((sum, invoice) => sum + parseFloat(invoice.total.toString()), 0);
+    .filter((invoice: Invoice) => invoice.status === "overdue")
+    .reduce((sum: number, invoice: Invoice) => sum + parseFloat(invoice.total.toString()), 0);
 
   const averageHourlyRate = filteredTimeEntries
-    .filter(entry => entry.hourlyRate && entry.duration)
-    .reduce((sum, entry, _, arr) => sum + parseFloat(entry.hourlyRate?.toString() || "0"), 0) / 
-    filteredTimeEntries.filter(entry => entry.hourlyRate).length || 0;
+    .filter((entry: TimeEntry) => entry.hourlyRate && entry.duration)
+    .reduce((sum: number, entry: TimeEntry, _: number, arr: TimeEntry[]) => sum + parseFloat(entry.hourlyRate?.toString() || "0"), 0) / 
+    filteredTimeEntries.filter((entry: TimeEntry) => entry.hourlyRate).length || 0;
 
   // Case type distribution
   const caseTypeStats = cases.reduce((acc: Record<string, number>, caseItem: Case) => {
@@ -96,7 +105,9 @@ export default function Reports() {
 
   // Client acquisition by month
   const clientsByMonth = clients.reduce((acc: Record<string, number>, client: Client) => {
-    const month = format(new Date(client.createdAt), "MMM yyyy");
+    const createdDate = safeDate(client.createdAt);
+    if (!createdDate) return acc;
+    const month = format(createdDate, "MMM yyyy");
     acc[month] = (acc[month] || 0) + 1;
     return acc;
   }, {});
@@ -373,8 +384,9 @@ export default function Reports() {
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium">Cases Opened</span>
                   <Badge variant="secondary" data-testid="cases-opened-count">
-                    {cases.filter(c => {
-                      const caseDate = new Date(c.createdAt);
+                    {cases.filter((c: Case) => {
+                      const caseDate = safeDate(c.createdAt);
+                      if (!caseDate) return false;
                       return caseDate >= startDate && caseDate <= endDate;
                     }).length}
                   </Badge>
@@ -388,8 +400,9 @@ export default function Reports() {
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium">New Clients</span>
                   <Badge variant="outline" data-testid="new-clients-count">
-                    {clients.filter(client => {
-                      const clientDate = new Date(client.createdAt);
+                    {clients.filter((client: Client) => {
+                      const clientDate = safeDate(client.createdAt);
+                      if (!clientDate) return false;
                       return clientDate >= startDate && clientDate <= endDate;
                     }).length}
                   </Badge>
