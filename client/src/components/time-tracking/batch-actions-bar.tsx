@@ -29,10 +29,7 @@ export function BatchActionsBar({ onApprove, onDelete, isApproving, isDeleting }
           <div className="flex items-center gap-2">
             <Button
               size="sm"
-              onClick={() => {
-                onApprove(selectedArray);
-                clearAll();
-              }}
+              onClick={() => onApprove(selectedArray)}
               disabled={isApproving || isDeleting}
               data-testid="button-approve-selected"
             >
@@ -45,7 +42,6 @@ export function BatchActionsBar({ onApprove, onDelete, isApproving, isDeleting }
               onClick={() => {
                 if (window.confirm(`Are you sure you want to delete ${selectedIds.size} ${selectedIds.size === 1 ? 'entry' : 'entries'}?`)) {
                   onDelete(selectedArray);
-                  clearAll();
                 }
               }}
               disabled={isApproving || isDeleting}

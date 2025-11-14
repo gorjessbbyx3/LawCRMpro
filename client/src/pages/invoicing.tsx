@@ -29,6 +29,7 @@ export default function Invoicing() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isGenerateDialogOpen, setIsGenerateDialogOpen] = useState(false);
+  const [selectedCaseForGeneration, setSelectedCaseForGeneration] = useState<string>("");
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -58,15 +59,16 @@ export default function Invoicing() {
       queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
       queryClient.invalidateQueries({ queryKey: ["/api/time-entries"] });
       setIsGenerateDialogOpen(false);
+      setSelectedCaseForGeneration("");
       toast({
         title: "Success",
         description: "Invoice generated from time entries successfully",
       });
     },
-    onError: () => {
+    onError: (error: Error) => {
       toast({
         title: "Error",
-        description: "Failed to generate invoice",
+        description: error.message || "Failed to generate invoice",
         variant: "destructive",
       });
     },
@@ -181,26 +183,9 @@ export default function Invoicing() {
                 </p>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Select Case (Optional)</label>
-                  <Select onValueChange={(value) => {
-                    if (value === "all") {
-                      // Generate for all ready to bill entries
-                      // Backend will handle finding all clients
-                      generateInvoiceMutation.mutate({
-                        caseId: "",
-                        clientId: "",
-                      });
-                    } else {
-                      const caseItem = cases.find(c => c.id === value);
-                      if (caseItem) {
-                        generateInvoiceMutation.mutate({
-                          caseId: value,
-                          clientId: caseItem.clientId || "",
-                        });
-                      }
-                    }
-                  }}>
+                  <Select value={selectedCaseForGeneration} onValueChange={setSelectedCaseForGeneration}>
                     <SelectTrigger data-testid="select-generate-case">
-                      <SelectValue placeholder="Select case" />
+                      <SelectValue placeholder="Select case or generate for all" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All ready to bill entries</SelectItem>
@@ -212,14 +197,48 @@ export default function Invoicing() {
                     </SelectContent>
                   </Select>
                 </div>
-                <Button
-                  onClick={() => setIsGenerateDialogOpen(false)}
-                  variant="outline"
-                  className="w-full"
-                  data-testid="button-cancel-generate"
-                >
-                  Cancel
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => {
+                      setIsGenerateDialogOpen(false);
+                      setSelectedCaseForGeneration("");
+                    }}
+                    variant="outline"
+                    className="flex-1"
+                    data-testid="button-cancel-generate"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      if (selectedCaseForGeneration === "all") {
+                        generateInvoiceMutation.mutate({
+                          caseId: "",
+                          clientId: "",
+                        });
+                      } else if (selectedCaseForGeneration) {
+                        const caseItem = cases.find(c => c.id === selectedCaseForGeneration);
+                        if (caseItem) {
+                          generateInvoiceMutation.mutate({
+                            caseId: selectedCaseForGeneration,
+                            clientId: caseItem.clientId || "",
+                          });
+                        }
+                      } else {
+                        toast({
+                          title: "Error",
+                          description: "Please select a case or 'All ready to bill entries'",
+                          variant: "destructive",
+                        });
+                      }
+                    }}
+                    disabled={!selectedCaseForGeneration || generateInvoiceMutation.isPending}
+                    className="flex-1"
+                    data-testid="button-confirm-generate"
+                  >
+                    {generateInvoiceMutation.isPending ? 'Generating...' : 'Generate Invoice'}
+                  </Button>
+                </div>
               </div>
             </DialogContent>
           </Dialog>
@@ -547,12 +566,21 @@ export default function Invoicing() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => {
+                          onClick={async () => {
                             const client = clients.find(c => c.id === invoice.clientId);
                             const caseInfo = cases.find(c => c.id === invoice.caseId);
-                            const clientName = client ? `${client.firstName} ${client.lastName}` : undefined;
-                            const caseName = caseInfo ? caseInfo.title : undefined;
-                            downloadInvoicePDF(invoice, clientName, caseName);
+                            const clientName = client ? `${client.firstName} ${client.lastName}` : 'Unknown Client';
+                            const caseName = caseInfo?.title;
+                            
+                            const result = await downloadInvoicePDF(invoice, clientName, caseName);
+                            
+                            if (!result.success) {
+                              toast({
+                                title: "Error",
+                                description: result.error || "Failed to download PDF",
+                                variant: "destructive",
+                              });
+                            }
                           }}
                           data-testid={`button-download-${invoice.id}`}
                         >

@@ -63,12 +63,10 @@ export function InvoicePDF({ invoice, clientName, caseName }: InvoicePDFProps) {
             <Text style={styles.label}>Due Date:</Text>
             <Text>{new Date(invoice.dueDate).toLocaleDateString()}</Text>
           </View>
-          {clientName && (
-            <View style={styles.row}>
-              <Text style={styles.label}>Client:</Text>
-              <Text>{clientName}</Text>
-            </View>
-          )}
+          <View style={styles.row}>
+            <Text style={styles.label}>Client:</Text>
+            <Text>{clientName || 'Not specified'}</Text>
+          </View>
           {caseName && (
             <View style={styles.row}>
               <Text style={styles.label}>Case:</Text>
@@ -109,11 +107,17 @@ export function InvoicePDF({ invoice, clientName, caseName }: InvoicePDFProps) {
 }
 
 export async function downloadInvoicePDF(invoice: Invoice, clientName?: string, caseName?: string) {
-  const blob = await pdf(<InvoicePDF invoice={invoice} clientName={clientName} caseName={caseName} />).toBlob();
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `Invoice-${invoice.invoiceNumber}.pdf`;
-  link.click();
-  URL.revokeObjectURL(url);
+  try {
+    const blob = await pdf(<InvoicePDF invoice={invoice} clientName={clientName} caseName={caseName} />).toBlob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Invoice-${invoice.invoiceNumber}.pdf`;
+    link.click();
+    URL.revokeObjectURL(url);
+    return { success: true };
+  } catch (error) {
+    console.error('PDF generation failed:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to generate PDF' };
+  }
 }

@@ -154,6 +154,13 @@ function TimeTrackingContent() {
 
   const batchApproveMutation = useMutation({
     mutationFn: async (ids: string[]) => {
+      const entriesToApprove = timeEntries.filter(e => ids.includes(e.id));
+      const incompletedEntries = entriesToApprove.filter(e => !e.endTime);
+      
+      if (incompletedEntries.length > 0) {
+        throw new Error(`Cannot approve ${incompletedEntries.length} incomplete ${incompletedEntries.length === 1 ? 'entry' : 'entries'}. Only completed time entries can be approved.`);
+      }
+
       await apiRequest("POST", "/api/time-entries/batch", {
         action: "approve",
         ids,
@@ -161,15 +168,16 @@ function TimeTrackingContent() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/time-entries"] });
+      clearAll();
       toast({
         title: "Success",
         description: "Time entries approved successfully",
       });
     },
-    onError: () => {
+    onError: (error: Error) => {
       toast({
         title: "Error",
-        description: "Failed to approve entries",
+        description: error.message || "Failed to approve entries",
         variant: "destructive",
       });
     },
@@ -184,15 +192,16 @@ function TimeTrackingContent() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/time-entries"] });
+      clearAll();
       toast({
         title: "Success",
         description: "Time entries deleted successfully",
       });
     },
-    onError: () => {
+    onError: (error: Error) => {
       toast({
         title: "Error",
-        description: "Failed to delete entries",
+        description: error.message || "Failed to delete entries",
         variant: "destructive",
       });
     },
@@ -563,6 +572,8 @@ function TimeTrackingContent() {
                           onStatusChange={(newStatus) => changeStatusMutation.mutate({ id: entry.id, status: newStatus })}
                           disabled={changeStatusMutation.isPending}
                           entryId={entry.id}
+                          hasEndTime={!!entry.endTime}
+                          onValidationError={(message) => toast({ title: "Error", description: message, variant: "destructive" })}
                         />
                       )}
                       <Button
@@ -663,11 +674,8 @@ function TimeTrackingContent() {
                         <Textarea {...field} className="flex-1" data-testid="input-description" />
                       </FormControl>
                       <VoiceInputControl
-                        onTranscript={(text) => {
-                          const currentValue = form.getValues("description") || "";
-                          const newValue = currentValue ? `${currentValue} ${text}` : text;
-                          form.setValue("description", newValue);
-                        }}
+                        currentValue={field.value || ""}
+                        onValueChange={(value) => form.setValue("description", value)}
                         disabled={updateTimeEntryMutation.isPending}
                       />
                     </div>

@@ -1,22 +1,32 @@
 import { Button } from "@/components/ui/button";
 import { Mic, MicOff } from "lucide-react";
 import { useVoiceToText } from "@/hooks/use-voice-to-text";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 interface VoiceInputControlProps {
-  onTranscript: (text: string) => void;
+  currentValue: string;
+  onValueChange: (value: string) => void;
   disabled?: boolean;
 }
 
-export function VoiceInputControl({ onTranscript, disabled }: VoiceInputControlProps) {
-  const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } = useVoiceToText();
+export function VoiceInputControl({ currentValue, onValueChange, disabled }: VoiceInputControlProps) {
+  const { isListening, transcript, isSupported, startListening, stopListening } = useVoiceToText();
+  const lastTranscriptRef = useRef('');
 
   useEffect(() => {
-    if (transcript) {
-      onTranscript(transcript);
-      resetTranscript();
+    if (!transcript) {
+      return;
     }
-  }, [transcript, onTranscript, resetTranscript]);
+    
+    if (transcript !== lastTranscriptRef.current) {
+      const newText = transcript.slice(lastTranscriptRef.current.length);
+      if (newText.trim()) {
+        const separator = currentValue && !currentValue.endsWith(' ') ? ' ' : '';
+        onValueChange(currentValue + separator + newText);
+      }
+      lastTranscriptRef.current = transcript;
+    }
+  }, [transcript, currentValue, onValueChange]);
 
   if (!isSupported) {
     return null;
@@ -31,6 +41,7 @@ export function VoiceInputControl({ onTranscript, disabled }: VoiceInputControlP
         if (isListening) {
           stopListening();
         } else {
+          lastTranscriptRef.current = '';
           startListening();
         }
       }}

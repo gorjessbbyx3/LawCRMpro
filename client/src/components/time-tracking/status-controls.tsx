@@ -28,9 +28,11 @@ interface StatusControlsProps {
   onStatusChange: (newStatus: TimeEntryStatus) => void;
   disabled?: boolean;
   entryId: string;
+  hasEndTime: boolean;
+  onValidationError?: (message: string) => void;
 }
 
-export function StatusControls({ currentStatus, onStatusChange, disabled, entryId }: StatusControlsProps) {
+export function StatusControls({ currentStatus, onStatusChange, disabled, entryId, hasEndTime, onValidationError }: StatusControlsProps) {
   if (!currentStatus) {
     return null;
   }
@@ -40,6 +42,22 @@ export function StatusControls({ currentStatus, onStatusChange, disabled, entryI
   if (allowedTransitions.length === 0) {
     return null;
   }
+
+  const handleStatusChange = (newStatus: TimeEntryStatus) => {
+    const isForwardTransition = 
+      (currentStatus === 'draft' && newStatus === 'ready_to_bill') ||
+      (currentStatus === 'ready_to_bill' && newStatus === 'invoiced') ||
+      (currentStatus === 'invoiced' && newStatus === 'paid');
+
+    if (isForwardTransition && !hasEndTime) {
+      if (onValidationError) {
+        onValidationError('Cannot advance status of incomplete time entry. Please stop the timer first.');
+      }
+      return;
+    }
+
+    onStatusChange(newStatus);
+  };
 
   return (
     <DropdownMenu>
@@ -58,7 +76,7 @@ export function StatusControls({ currentStatus, onStatusChange, disabled, entryI
         {allowedTransitions.map((status) => (
           <DropdownMenuItem
             key={status}
-            onClick={() => onStatusChange(status)}
+            onClick={() => handleStatusChange(status)}
             data-testid={`menu-status-${status}-${entryId}`}
           >
             {STATUS_LABELS[status]}
