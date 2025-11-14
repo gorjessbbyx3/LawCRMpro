@@ -1,14 +1,17 @@
 import { 
   users, clients, cases, timeEntries, invoices, invoiceItems, 
   documents, calendarEvents, messages, aiConversations, complianceDeadlines,
+  rateTables, activityTemplates,
   type User, type InsertUser, type Client, type InsertClient,
   type Case, type InsertCase, type TimeEntry, type InsertTimeEntry,
   type Invoice, type InsertInvoice, type Document, type InsertDocument,
   type CalendarEvent, type InsertCalendarEvent, type Message, type InsertMessage,
-  type AiConversation, type InsertAiConversation
+  type AiConversation, type InsertAiConversation,
+  type RateTable, type InsertRateTable, type ActivityTemplate, type InsertActivityTemplate
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, gte, lte, like, or, sql, isNull } from "drizzle-orm";
+import { eq, desc, and, gte, lte, like, or, sql, isNull, inArray } from "drizzle-orm";
+import { roundToIncrement } from "@shared/utbmsCodes";
 
 export interface IStorage {
   // Users
@@ -83,6 +86,24 @@ export interface IStorage {
     billableHours: number;
     upcomingCourtDates: number;
   }>;
+
+  // Enhanced Time Entry methods
+  pauseTimeEntry(id: string): Promise<TimeEntry>;
+  resumeTimeEntry(id: string): Promise<TimeEntry>;
+  stopTimeEntry(id: string): Promise<TimeEntry>;
+  batchUpdateTimeEntries(ids: string[], updates: { status?: string; hourlyRate?: string; isBillable?: boolean }): Promise<TimeEntry[]>;
+  getTimeEntryAnalytics(attorneyId: string, startDate: string, endDate: string): Promise<any>;
+
+  // Rate Tables
+  getRateTables(): Promise<RateTable[]>;
+  createRateTable(rateTable: InsertRateTable): Promise<RateTable>;
+
+  // Activity Templates
+  getActivityTemplates(): Promise<ActivityTemplate[]>;
+  createActivityTemplate(template: InsertActivityTemplate): Promise<ActivityTemplate>;
+
+  // Invoice Generation
+  generateInvoiceFromTimeEntries(clientId: string, caseId: string, timeEntryIds: string[], dueInDays: number): Promise<Invoice>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -397,6 +418,245 @@ export class DatabaseStorage implements IStorage {
       billableHours: Math.round((billableHoursResult[0]?.total || 0) / 60 * 10) / 10,
       upcomingCourtDates: upcomingCourtDatesResult[0]?.count || 0
     };
+  }
+
+  // Enhanced Time Entry Methods
+  async pauseTimeEntry(id: string): Promise<TimeEntry> {
+    const [entry] = await db.select().from(timeEntries).where(eq(timeEntries.id, id));
+    if (!entry) throw new Error("Time entry not found");
+    if (entry.isPaused) throw new Error("Timer is already paused");
+    if (entry.endTime) throw new Error("Cannot pause a completed timer");
+
+    const [updated] = await db
+      .update(timeEntries)
+      .set({
+        isPaused: true,
+        pausedAt: new Date()
+      })
+      .where(eq(timeEntries.id, id))
+      .returning();
+    return updated;
+  }
+
+  async resumeTimeEntry(id: string): Promise<TimeEntry> {
+    const [entry] = await db.select().from(timeEntries).where(eq(timeEntries.id, id));
+    if (!entry) throw new Error("Time entry not found");
+    if (!entry.isPaused) throw new Error("Timer is not paused");
+    if (entry.endTime) throw new Error("Cannot resume a completed timer");
+
+    const pausedDuration = entry.pausedDuration || 0;
+    const additionalPause = entry.pausedAt 
+      ? Math.floor((Date.now() - new Date(entry.pausedAt).getTime()) / 60000)
+      : 0;
+
+    const [updated] = await db
+      .update(timeEntries)
+      .set({
+        isPaused: false,
+        pausedAt: null,
+        pausedDuration: pausedDuration + additionalPause
+      })
+      .where(eq(timeEntries.id, id))
+      .returning();
+    return updated;
+  }
+
+  async stopTimeEntry(id: string): Promise<TimeEntry> {
+    const [entry] = await db.select().from(timeEntries).where(eq(timeEntries.id, id));
+    if (!entry) throw new Error("Time entry not found");
+    if (entry.endTime) throw new Error("Timer is already stopped");
+
+    const endTime = new Date();
+    const totalMinutes = Math.floor((endTime.getTime() - new Date(entry.startTime).getTime()) / 60000);
+    const pausedMinutes = entry.pausedDuration || 0;
+    const actualMinutes = totalMinutes - pausedMinutes;
+    const roundedMinutes = roundToIncrement(actualMinutes);
+
+    const [updated] = await db
+      .update(timeEntries)
+      .set({
+        endTime,
+        duration: actualMinutes,
+        roundedDuration: roundedMinutes,
+        isPaused: false,
+        pausedAt: null
+      })
+      .where(eq(timeEntries.id, id))
+      .returning();
+    return updated;
+  }
+
+  async batchUpdateTimeEntries(ids: string[], updates: { status?: string; hourlyRate?: string; isBillable?: boolean }): Promise<TimeEntry[]> {
+    const updatedEntries = await db
+      .update(timeEntries)
+      .set(updates)
+      .where(inArray(timeEntries.id, ids))
+      .returning();
+    return updatedEntries;
+  }
+
+  async getTimeEntryAnalytics(attorneyId: string, startDate: string, endDate: string): Promise<any> {
+    const start = startDate ? new Date(startDate) : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    const end = endDate ? new Date(endDate) : new Date();
+
+    const entries = await db
+      .select()
+      .from(timeEntries)
+      .where(and(
+        eq(timeEntries.attorneyId, attorneyId),
+        gte(timeEntries.startTime, start),
+        lte(timeEntries.startTime, end)
+      ));
+
+    const billableEntries = entries.filter(e => e.isBillable);
+    const nonBillableEntries = entries.filter(e => !e.isBillable);
+
+    const totalBillableMinutes = billableEntries.reduce((sum, e) => sum + (e.duration || 0), 0);
+    const totalNonBillableMinutes = nonBillableEntries.reduce((sum, e) => sum + (e.duration || 0), 0);
+    const totalRevenue = billableEntries.reduce((sum, e) => {
+      const hours = (e.duration || 0) / 60;
+      const rate = parseFloat(e.hourlyRate?.toString() || "0");
+      return sum + (hours * rate);
+    }, 0);
+
+    const byStatus = entries.reduce((acc, e) => {
+      const status = e.status || 'draft';
+      acc[status] = (acc[status] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const byActivity = entries.reduce((acc, e) => {
+      const activity = e.activity || 'unknown';
+      acc[activity] = (acc[activity] || 0) + (e.duration || 0);
+      return acc;
+    }, {} as Record<string, number>);
+
+    return {
+      totalEntries: entries.length,
+      billableEntries: billableEntries.length,
+      nonBillableEntries: nonBillableEntries.length,
+      totalBillableHours: Math.round(totalBillableMinutes / 60 * 10) / 10,
+      totalNonBillableHours: Math.round(totalNonBillableMinutes / 60 * 10) / 10,
+      totalRevenue: totalRevenue.toFixed(2),
+      utilizationRate: totalBillableMinutes + totalNonBillableMinutes > 0
+        ? Math.round((totalBillableMinutes / (totalBillableMinutes + totalNonBillableMinutes)) * 100)
+        : 0,
+      byStatus,
+      byActivity,
+      entries: entries.map(e => ({
+        id: e.id,
+        date: e.startTime,
+        activity: e.activity,
+        duration: e.duration,
+        billableAmount: e.isBillable && e.hourlyRate 
+          ? ((e.duration || 0) / 60) * parseFloat(e.hourlyRate.toString())
+          : 0
+      }))
+    };
+  }
+
+  // Rate Tables
+  async getRateTables(): Promise<RateTable[]> {
+    return await db.select().from(rateTables).orderBy(desc(rateTables.createdAt));
+  }
+
+  async createRateTable(rateTable: InsertRateTable): Promise<RateTable> {
+    const [created] = await db.insert(rateTables).values(rateTable).returning();
+    return created;
+  }
+
+  // Activity Templates
+  async getActivityTemplates(): Promise<ActivityTemplate[]> {
+    return await db.select().from(activityTemplates).orderBy(desc(activityTemplates.createdAt));
+  }
+
+  async createActivityTemplate(template: InsertActivityTemplate): Promise<ActivityTemplate> {
+    const [created] = await db.insert(activityTemplates).values(template).returning();
+    return created;
+  }
+
+  // Invoice Generation
+  async generateInvoiceFromTimeEntries(
+    clientId: string,
+    caseId: string,
+    timeEntryIds: string[],
+    dueInDays: number
+  ): Promise<Invoice> {
+    // Get the time entries
+    const entries = await db
+      .select()
+      .from(timeEntries)
+      .where(inArray(timeEntries.id, timeEntryIds));
+
+    if (entries.length === 0) {
+      throw new Error("No time entries found");
+    }
+
+    // Calculate totals
+    let subtotal = 0;
+    entries.forEach(entry => {
+      if (entry.isBillable && entry.duration && entry.hourlyRate) {
+        const hours = entry.duration / 60;
+        const rate = parseFloat(entry.hourlyRate.toString());
+        subtotal += hours * rate;
+      }
+    });
+
+    // Generate invoice number
+    const invoiceCount = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(invoices);
+    const invoiceNumber = `INV-${String(invoiceCount[0].count + 1).padStart(5, '0')}`;
+
+    const issueDate = new Date();
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + dueInDays);
+
+    // Create invoice
+    const [invoice] = await db
+      .insert(invoices)
+      .values({
+        invoiceNumber,
+        clientId,
+        caseId,
+        issueDate: issueDate.toISOString().split('T')[0],
+        dueDate: dueDate.toISOString().split('T')[0],
+        subtotal: subtotal.toFixed(2),
+        tax: "0.00",
+        total: subtotal.toFixed(2),
+        status: "draft"
+      })
+      .returning();
+
+    // Create invoice items from time entries
+    const invoiceItemsData = entries.map(entry => {
+      const hours = (entry.duration || 0) / 60;
+      const rate = parseFloat(entry.hourlyRate?.toString() || "0");
+      const amount = hours * rate;
+
+      return {
+        invoiceId: invoice.id,
+        timeEntryId: entry.id,
+        description: `${entry.activity}: ${entry.description || 'Legal services'}`,
+        quantity: hours.toFixed(2),
+        rate: rate.toFixed(2),
+        amount: amount.toFixed(2)
+      };
+    });
+
+    await db.insert(invoiceItems).values(invoiceItemsData);
+
+    // Mark time entries as invoiced
+    await db
+      .update(timeEntries)
+      .set({ 
+        isInvoiced: true,
+        status: 'invoiced',
+        invoiceId: invoice.id
+      })
+      .where(inArray(timeEntries.id, timeEntryIds));
+
+    return invoice;
   }
 }
 

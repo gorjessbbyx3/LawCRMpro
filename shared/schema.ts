@@ -79,13 +79,21 @@ export const timeEntries = pgTable("time_entries", {
   caseId: uuid("case_id").references(() => cases.id),
   attorneyId: uuid("attorney_id").references(() => users.id),
   activity: text("activity").notNull(), // research, client_call, court_time, document_review, etc.
+  utbmsCode: text("utbms_code"), // UTBMS codes: L110, L120, L310, etc.
   description: text("description"),
   startTime: timestamp("start_time").notNull(),
   endTime: timestamp("end_time"),
+  pausedAt: timestamp("paused_at"), // When timer was paused
+  pausedDuration: integer("paused_duration").default(0), // Total minutes paused
+  isPaused: boolean("is_paused").default(false), // Current pause state
   duration: integer("duration"), // in minutes
+  roundedDuration: integer("rounded_duration"), // Duration after 6-minute rounding
   hourlyRate: decimal("hourly_rate", { precision: 8, scale: 2 }),
   isBillable: boolean("is_billable").default(true),
+  status: text("status").default("draft"), // draft, ready_to_bill, invoiced, paid
+  invoiceId: uuid("invoice_id").references(() => invoices.id),
   isInvoiced: boolean("is_invoiced").default(false),
+  editHistory: jsonb("edit_history"), // Audit trail for compliance
   createdAt: timestamp("created_at").defaultNow()
 });
 
@@ -193,6 +201,36 @@ export const complianceDeadlines = pgTable("compliance_deadlines", {
   createdAt: timestamp("created_at").defaultNow()
 });
 
+// Rate tables - Different rates by attorney, activity, or client
+export const rateTables = pgTable("rate_tables", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(), // e.g., "Senior Partner Rate", "Court Appearance Rate"
+  attorneyId: uuid("attorney_id").references(() => users.id), // Attorney-specific rate
+  clientId: uuid("client_id").references(() => clients.id), // Client-specific rate
+  activityType: text("activity_type"), // Activity-specific rate
+  utbmsCode: text("utbms_code"), // UTBMS code-specific rate
+  hourlyRate: decimal("hourly_rate", { precision: 8, scale: 2 }).notNull(),
+  isDefault: boolean("is_default").default(false),
+  effectiveDate: date("effective_date").notNull(),
+  expirationDate: date("expiration_date"),
+  createdAt: timestamp("created_at").defaultNow()
+});
+
+// Activity templates - Pre-configured time entry templates
+export const activityTemplates = pgTable("activity_templates", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(), // e.g., "Client Phone Call"
+  activityType: text("activity_type").notNull(),
+  utbmsCode: text("utbms_code"), // Default UTBMS code
+  description: text("description"), // Default description template
+  defaultDuration: integer("default_duration"), // Default duration in minutes
+  defaultRate: decimal("default_rate", { precision: 8, scale: 2 }),
+  isBillable: boolean("is_billable").default(true),
+  attorneyId: uuid("attorney_id").references(() => users.id), // Template owner (null = shared)
+  isShared: boolean("is_shared").default(false), // Available to all attorneys
+  createdAt: timestamp("created_at").defaultNow()
+});
+
 // Define relations
 export const usersRelations = relations(users, ({ many }) => ({
   cases: many(cases),
@@ -233,6 +271,28 @@ export const timeEntriesRelations = relations(timeEntries, ({ one }) => ({
   }),
   attorney: one(users, {
     fields: [timeEntries.attorneyId],
+    references: [users.id]
+  }),
+  invoice: one(invoices, {
+    fields: [timeEntries.invoiceId],
+    references: [invoices.id]
+  })
+}));
+
+export const rateTablesRelations = relations(rateTables, ({ one }) => ({
+  attorney: one(users, {
+    fields: [rateTables.attorneyId],
+    references: [users.id]
+  }),
+  client: one(clients, {
+    fields: [rateTables.clientId],
+    references: [clients.id]
+  })
+}));
+
+export const activityTemplatesRelations = relations(activityTemplates, ({ one }) => ({
+  attorney: one(users, {
+    fields: [activityTemplates.attorneyId],
     references: [users.id]
   })
 }));
@@ -309,6 +369,16 @@ export const insertAiConversationSchema = createInsertSchema(aiConversations).om
   createdAt: true
 });
 
+export const insertRateTableSchema = createInsertSchema(rateTables).omit({
+  id: true,
+  createdAt: true
+});
+
+export const insertActivityTemplateSchema = createInsertSchema(activityTemplates).omit({
+  id: true,
+  createdAt: true
+});
+
 // Type exports
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -336,3 +406,9 @@ export type InsertMessage = z.infer<typeof insertMessageSchema>;
 
 export type AiConversation = typeof aiConversations.$inferSelect;
 export type InsertAiConversation = z.infer<typeof insertAiConversationSchema>;
+
+export type RateTable = typeof rateTables.$inferSelect;
+export type InsertRateTable = z.infer<typeof insertRateTableSchema>;
+
+export type ActivityTemplate = typeof activityTemplates.$inferSelect;
+export type InsertActivityTemplate = z.infer<typeof insertActivityTemplateSchema>;

@@ -4,7 +4,8 @@ import { storage } from "./storage";
 import { 
   insertClientSchema, insertCaseSchema, insertTimeEntrySchema, 
   insertInvoiceSchema, insertDocumentSchema, insertCalendarEventSchema,
-  insertMessageSchema, insertAiConversationSchema, insertUserSchema
+  insertMessageSchema, insertAiConversationSchema, insertUserSchema,
+  insertRateTableSchema, insertActivityTemplateSchema
 } from "@shared/schema";
 import { z } from "zod";
 import { 
@@ -435,6 +436,137 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.delete("/api/time-entries/:id", async (req, res) => {
+    try {
+      await storage.deleteTimeEntry(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting time entry:", error);
+      res.status(500).json({ message: "Failed to delete time entry" });
+    }
+  });
+
+  // Pause/Resume/Stop Timer
+  app.patch("/api/time-entries/:id/pause", async (req, res) => {
+    try {
+      const timeEntry = await storage.pauseTimeEntry(req.params.id);
+      res.json(timeEntry);
+    } catch (error) {
+      console.error("Error pausing timer:", error);
+      res.status(500).json({ message: "Failed to pause timer" });
+    }
+  });
+
+  app.patch("/api/time-entries/:id/resume", async (req, res) => {
+    try {
+      const timeEntry = await storage.resumeTimeEntry(req.params.id);
+      res.json(timeEntry);
+    } catch (error) {
+      console.error("Error resuming timer:", error);
+      res.status(500).json({ message: "Failed to resume timer" });
+    }
+  });
+
+  app.patch("/api/time-entries/:id/stop", async (req, res) => {
+    try {
+      const timeEntry = await storage.stopTimeEntry(req.params.id);
+      res.json(timeEntry);
+    } catch (error) {
+      console.error("Error stopping timer:", error);
+      res.status(500).json({ message: "Failed to stop timer" });
+    }
+  });
+
+  // Batch Operations
+  app.patch("/api/time-entries/batch", async (req, res) => {
+    try {
+      const batchSchema = z.object({
+        ids: z.array(z.string()).min(1),
+        updates: z.object({
+          status: z.enum(['draft', 'ready_to_bill', 'invoiced', 'paid']).optional(),
+          hourlyRate: z.string().optional(),
+          isBillable: z.boolean().optional()
+        })
+      });
+      
+      const { ids, updates } = batchSchema.parse(req.body);
+      const timeEntries = await storage.batchUpdateTimeEntries(ids, updates);
+      res.json(timeEntries);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid batch update data", errors: error.errors });
+      }
+      console.error("Error batch updating time entries:", error);
+      res.status(500).json({ message: "Failed to batch update time entries" });
+    }
+  });
+
+  // Analytics
+  app.get("/api/time-entries/analytics", async (req, res) => {
+    try {
+      const { attorneyId, startDate, endDate } = req.query;
+      const analytics = await storage.getTimeEntryAnalytics(
+        attorneyId as string,
+        startDate as string,
+        endDate as string
+      );
+      res.json(analytics);
+    } catch (error) {
+      console.error("Error fetching analytics:", error);
+      res.status(500).json({ message: "Failed to fetch analytics" });
+    }
+  });
+
+  // Rate Tables
+  app.get("/api/rate-tables", async (req, res) => {
+    try {
+      const rateTables = await storage.getRateTables();
+      res.json(rateTables);
+    } catch (error) {
+      console.error("Error fetching rate tables:", error);
+      res.status(500).json({ message: "Failed to fetch rate tables" });
+    }
+  });
+
+  app.post("/api/rate-tables", async (req, res) => {
+    try {
+      const rateTableData = insertRateTableSchema.parse(req.body);
+      const rateTable = await storage.createRateTable(rateTableData);
+      res.status(201).json(rateTable);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid rate table data", errors: error.errors });
+      }
+      console.error("Error creating rate table:", error);
+      res.status(500).json({ message: "Failed to create rate table" });
+    }
+  });
+
+  // Activity Templates
+  app.get("/api/activity-templates", async (req, res) => {
+    try {
+      const templates = await storage.getActivityTemplates();
+      res.json(templates);
+    } catch (error) {
+      console.error("Error fetching activity templates:", error);
+      res.status(500).json({ message: "Failed to fetch activity templates" });
+    }
+  });
+
+  app.post("/api/activity-templates", async (req, res) => {
+    try {
+      const templateData = insertActivityTemplateSchema.parse(req.body);
+      const template = await storage.createActivityTemplate(templateData);
+      res.status(201).json(template);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid activity template data", errors: error.errors });
+      }
+      console.error("Error creating activity template:", error);
+      res.status(500).json({ message: "Failed to create activity template" });
+    }
+  });
+
   // Invoices
   app.get("/api/invoices", async (req, res) => {
     try {
@@ -457,6 +589,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       console.error("Error creating invoice:", error);
       res.status(500).json({ message: "Failed to create invoice" });
+    }
+  });
+
+  // Generate invoice from time entries
+  app.post("/api/invoices/generate", async (req, res) => {
+    try {
+      const generateInvoiceSchema = z.object({
+        clientId: z.string().uuid(),
+        caseId: z.string().uuid(),
+        timeEntryIds: z.array(z.string().uuid()).min(1),
+        dueInDays: z.number().int().positive().default(30)
+      });
+      
+      const { clientId, caseId, timeEntryIds, dueInDays } = generateInvoiceSchema.parse(req.body);
+      const invoice = await storage.generateInvoiceFromTimeEntries(
+        clientId,
+        caseId,
+        timeEntryIds,
+        dueInDays
+      );
+      res.status(201).json(invoice);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid invoice generation data", errors: error.errors });
+      }
+      console.error("Error generating invoice:", error);
+      res.status(500).json({ message: "Failed to generate invoice" });
     }
   });
 
