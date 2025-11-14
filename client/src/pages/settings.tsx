@@ -27,7 +27,7 @@ interface User {
 }
 
 export default function Settings() {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, refetchUser } = useAuth();
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("profile");
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
@@ -61,8 +61,12 @@ export default function Settings() {
     mutationFn: async ({ id, ...userData }: any) => {
       return await apiRequest('PUT', `/api/users/${id}`, userData);
     },
-    onSuccess: () => {
+    onSuccess: async (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+      // If admin updated the current user's info, refetch to update topbar/sidebar
+      if (variables.id === currentUser?.id) {
+        await refetchUser();
+      }
       setIsEditUserOpen(false);
       setSelectedUser(null);
       toast({ title: "User updated successfully" });
@@ -91,8 +95,10 @@ export default function Settings() {
     mutationFn: async (profileData: any) => {
       return await apiRequest('PUT', '/api/auth/profile', profileData);
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ['/api/auth/me'] });
+      // Refetch user to immediately update topbar, sidebar, and all components
+      await refetchUser();
       toast({ title: "Profile updated successfully" });
     },
     onError: (error: any) => {
