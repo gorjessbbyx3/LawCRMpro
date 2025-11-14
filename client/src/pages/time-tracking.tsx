@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -16,13 +17,25 @@ import { useToast } from "@/hooks/use-toast";
 import { Plus, Search, Clock, Play, Square, Edit3, Trash2, Pause, StopCircle } from "lucide-react";
 import { format } from "date-fns";
 import TimeModal from "@/components/time-tracking/time-modal";
+import { TimeEntrySelectionProvider, useTimeEntrySelection } from "@/components/time-tracking/time-entry-selection-context";
+import { BatchActionsBar } from "@/components/time-tracking/batch-actions-bar";
+import { StatusControls } from "@/components/time-tracking/status-controls";
+import { VoiceInputControl } from "@/components/time-tracking/voice-input-control";
 import { DEMO_ATTORNEY_ID } from "@/lib/constants";
 
 // Mock attorney ID - in real app this would come from auth context
 const ATTORNEY_ID = DEMO_ATTORNEY_ID;
 
-
 export default function TimeTracking() {
+  return (
+    <TimeEntrySelectionProvider>
+      <TimeTrackingContent />
+    </TimeEntrySelectionProvider>
+  );
+}
+
+function TimeTrackingContent() {
+  const { isSelected, toggleSelection, clearAll, selectedIds } = useTimeEntrySelection();
   const [searchTerm, setSearchTerm] = useState("");
   const [filterActivity, setFilterActivity] = useState("");
   const [isTimeModalOpen, setIsTimeModalOpen] = useState(false);
@@ -139,6 +152,72 @@ export default function TimeTracking() {
     },
   });
 
+  const batchApproveMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      await apiRequest("POST", "/api/time-entries/batch", {
+        action: "approve",
+        ids,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/time-entries"] });
+      toast({
+        title: "Success",
+        description: "Time entries approved successfully",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to approve entries",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const batchDeleteMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      await apiRequest("POST", "/api/time-entries/batch", {
+        action: "delete",
+        ids,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/time-entries"] });
+      toast({
+        title: "Success",
+        description: "Time entries deleted successfully",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to delete entries",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const changeStatusMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: string }) => {
+      await apiRequest("PUT", `/api/time-entries/${id}`, { status });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/time-entries"] });
+      toast({
+        title: "Success",
+        description: "Status updated successfully",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update status",
+        variant: "destructive",
+      });
+    },
+  });
+
   const form = useForm({
     resolver: zodResolver(insertTimeEntrySchema.partial()),
     defaultValues: {
@@ -156,6 +235,11 @@ export default function TimeTracking() {
     const matchesActivity = !filterActivity || entry.activity?.toLowerCase().includes(filterActivity.toLowerCase());
     return matchesSearch && matchesActivity;
   });
+
+  // Clear selection when filtered entries change
+  useEffect(() => {
+    clearAll();
+  }, [searchTerm, filterActivity]);
 
   const formatDuration = (minutes: number | null) => {
     if (!minutes) return "0:00";
@@ -350,6 +434,14 @@ export default function TimeTracking() {
         </div>
       </div>
 
+      {/* Batch Actions Bar */}
+      <BatchActionsBar
+        onApprove={(ids) => batchApproveMutation.mutate(ids)}
+        onDelete={(ids) => batchDeleteMutation.mutate(ids)}
+        isApproving={batchApproveMutation.isPending}
+        isDeleting={batchDeleteMutation.isPending}
+      />
+
       {/* Time Entries */}
       <div className="space-y-4">
         {filteredEntries.length === 0 ? (
@@ -366,11 +458,20 @@ export default function TimeTracking() {
         ) : (
           filteredEntries.map((entry: TimeEntry) => {
             const caseInfo = cases.find((c: Case) => c.id === entry.caseId);
+            const isCompleted = !!entry.endTime;
             return (
               <Card key={entry.id} data-testid={`time-entry-${entry.id}`}>
                 <CardContent className="p-6">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
+                  <div className="flex items-start gap-3">
+                    {isCompleted && (
+                      <Checkbox
+                        checked={isSelected(entry.id)}
+                        onCheckedChange={() => toggleSelection(entry.id)}
+                        data-testid={`checkbox-select-${entry.id}`}
+                        className="mt-1"
+                      />
+                    )}
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-center flex-wrap gap-2 mb-2">
                         <h3 className="font-medium text-foreground" data-testid={`entry-activity-${entry.id}`}>
                           {entry.activity}
@@ -455,7 +556,15 @@ export default function TimeTracking() {
                       </div>
                     </div>
 
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center flex-wrap gap-2">
+                      {isCompleted && entry.status && (
+                        <StatusControls
+                          currentStatus={entry.status as any}
+                          onStatusChange={(newStatus) => changeStatusMutation.mutate({ id: entry.id, status: newStatus })}
+                          disabled={changeStatusMutation.isPending}
+                          entryId={entry.id}
+                        />
+                      )}
                       <Button
                         size="sm"
                         variant="outline"
@@ -549,9 +658,19 @@ export default function TimeTracking() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Description</FormLabel>
-                    <FormControl>
-                      <Textarea {...field} />
-                    </FormControl>
+                    <div className="flex gap-2">
+                      <FormControl>
+                        <Textarea {...field} className="flex-1" data-testid="input-description" />
+                      </FormControl>
+                      <VoiceInputControl
+                        onTranscript={(text) => {
+                          const currentValue = form.getValues("description") || "";
+                          const newValue = currentValue ? `${currentValue} ${text}` : text;
+                          form.setValue("description", newValue);
+                        }}
+                        disabled={updateTimeEntryMutation.isPending}
+                      />
+                    </div>
                     <FormMessage />
                   </FormItem>
                 )}

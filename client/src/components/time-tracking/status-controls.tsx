@@ -31,7 +31,7 @@ interface StatusControlsProps {
 }
 
 export function StatusControls({ currentStatus, onStatusChange, disabled, entryId }: StatusControlsProps) {
-  if (!currentStatus || currentStatus === 'paid') {
+  if (!currentStatus) {
     return null;
   }
 
