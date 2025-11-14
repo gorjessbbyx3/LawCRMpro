@@ -144,10 +144,8 @@ export const documents = pgTable("documents", {
   createdAt: timestamp("created_at").defaultNow()
 });
 
-// Calendar events  
-// Note: Partial unique index on (source_type, source_id) WHERE source_type = 'time_entry' 
-// must be created manually: CREATE UNIQUE INDEX idx_calendar_events_time_entry_unique 
-// ON calendar_events(source_type, source_id) WHERE source_type = 'time_entry';
+// Calendar events
+// Note: Indexes for event source tracking are applied via db/migrations/001_calendar_event_indexes.sql
 export const calendarEvents = pgTable("calendar_events", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   title: text("title").notNull(),

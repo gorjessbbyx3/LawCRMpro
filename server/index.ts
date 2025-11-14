@@ -1,7 +1,26 @@
 import express, { type Request, Response, NextFunction } from "express";
 import cookieParser from "cookie-parser";
+import { readFileSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { db } from './db';
+import { sql } from 'drizzle-orm';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+async function runMigrations() {
+  try {
+    const migrationPath = join(__dirname, '../db/migrations/001_calendar_event_indexes.sql');
+    const migrationSQL = readFileSync(migrationPath, 'utf-8');
+    await db.execute(sql.raw(migrationSQL));
+    log('Database migrations applied successfully');
+  } catch (error) {
+    log('Migration already applied or error:', error);
+  }
+}
 
 const app = express();
 app.use(express.json());
@@ -39,6 +58,7 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  await runMigrations();
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
