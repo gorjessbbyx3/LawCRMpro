@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -8,10 +8,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertTimeEntrySchema, type Case } from "@shared/schema";
+import { insertTimeEntrySchema, type Case, type ActivityTemplate } from "@shared/schema";
+import { UTBMS_CODES } from "@shared/utbmsCodes";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Play } from "lucide-react";
+import { Play, Mic } from "lucide-react";
 
 interface TimeModalProps {
   isOpen: boolean;
@@ -19,23 +20,18 @@ interface TimeModalProps {
   attorneyId: string;
 }
 
-const activityTypes = [
-  { value: "legal_research", label: "Legal Research" },
-  { value: "client_meeting", label: "Client Meeting" },
-  { value: "court_appearance", label: "Court Appearance" },
-  { value: "document_review", label: "Document Review" },
-  { value: "phone_call", label: "Phone Call" },
-  { value: "administrative", label: "Administrative" },
-  { value: "case_preparation", label: "Case Preparation" },
-  { value: "correspondence", label: "Correspondence" },
-];
 
 export default function TimeModal({ isOpen, onClose, attorneyId }: TimeModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [isListening, setIsListening] = useState(false);
 
   const { data: cases = [] } = useQuery({
     queryKey: ["/api/cases"],
+  });
+
+  const { data: templates = [] } = useQuery<ActivityTemplate[]>({
+    queryKey: ["/api/activity-templates"],
   });
 
   const startTimerMutation = useMutation({
@@ -72,13 +68,66 @@ export default function TimeModal({ isOpen, onClose, attorneyId }: TimeModalProp
       caseId: true,
       activity: true,
       description: true,
+      utbmsCode: true,
     })),
     defaultValues: {
       caseId: "",
       activity: "",
       description: "",
+      utbmsCode: "",
     },
   });
+
+  const handleTemplateSelect = (templateId: string) => {
+    const template = templates.find(t => t.id === templateId);
+    if (template) {
+      form.setValue("activity", template.activity);
+      if (template.utbmsCode) {
+        form.setValue("utbmsCode", template.utbmsCode);
+      }
+      if (template.defaultDescription) {
+        form.setValue("description", template.defaultDescription);
+      }
+    }
+  };
+
+  const startVoiceInput = () => {
+    if (!('webkitSpeechRecognition' in window)) {
+      toast({
+        title: "Not Supported",
+        description: "Voice input is not supported in this browser",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const recognition = new (window as any).webkitSpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    recognition.onstart = () => {
+      setIsListening(true);
+    };
+
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      form.setValue("description", transcript);
+    };
+
+    recognition.onerror = () => {
+      toast({
+        title: "Error",
+        description: "Failed to capture voice input",
+        variant: "destructive",
+      });
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognition.start();
+  };
 
   const onSubmit = (data: any) => {
     startTimerMutation.mutate(data);
@@ -93,6 +142,24 @@ export default function TimeModal({ isOpen, onClose, attorneyId }: TimeModalProp
         
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <FormItem>
+              <FormLabel>Activity Template (Optional)</FormLabel>
+              <Select onValueChange={handleTemplateSelect}>
+                <FormControl>
+                  <SelectTrigger data-testid="select-template">
+                    <SelectValue placeholder="Select template to auto-fill" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  {templates.map((template) => (
+                    <SelectItem key={template.id} value={template.id}>
+                      {template.name} {template.utbmsCode && `(${template.utbmsCode})`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormItem>
+          
             <FormField
               control={form.control}
               name="caseId"
@@ -124,16 +191,34 @@ export default function TimeModal({ isOpen, onClose, attorneyId }: TimeModalProp
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Activity Type</FormLabel>
+                  <FormControl>
+                    <Input 
+                      {...field} 
+                      placeholder="e.g., Legal Research"
+                      data-testid="input-activity"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="utbmsCode"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>UTBMS Code (Optional)</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
-                      <SelectTrigger data-testid="select-activity">
-                        <SelectValue placeholder="Select activity type" />
+                      <SelectTrigger data-testid="select-utbms">
+                        <SelectValue placeholder="Select UTBMS code" />
                       </SelectTrigger>
                     </FormControl>
-                    <SelectContent>
-                      {activityTypes.map((activity) => (
-                        <SelectItem key={activity.value} value={activity.value}>
-                          {activity.label}
+                    <SelectContent className="max-h-60">
+                      {UTBMS_CODES.map((code) => (
+                        <SelectItem key={code.code} value={code.code}>
+                          {code.code} - {code.description}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -148,7 +233,19 @@ export default function TimeModal({ isOpen, onClose, attorneyId }: TimeModalProp
               name="description"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Description (Optional)</FormLabel>
+                  <FormLabel className="flex items-center justify-between">
+                    <span>Description (Optional)</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={startVoiceInput}
+                      disabled={isListening}
+                      data-testid="button-voice-input"
+                    >
+                      <Mic className={`w-4 h-4 ${isListening ? 'text-red-500' : ''}`} />
+                    </Button>
+                  </FormLabel>
                   <FormControl>
                     <Textarea 
                       {...field} 

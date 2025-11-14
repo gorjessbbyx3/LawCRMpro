@@ -13,7 +13,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { insertTimeEntrySchema, type TimeEntry, type Case } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Search, Clock, Play, Square, Edit3, Trash2 } from "lucide-react";
+import { Plus, Search, Clock, Play, Square, Edit3, Trash2, Pause, StopCircle } from "lucide-react";
 import { format } from "date-fns";
 import TimeModal from "@/components/time-tracking/time-modal";
 import { DEMO_ATTORNEY_ID } from "@/lib/constants";
@@ -21,19 +21,10 @@ import { DEMO_ATTORNEY_ID } from "@/lib/constants";
 // Mock attorney ID - in real app this would come from auth context
 const ATTORNEY_ID = DEMO_ATTORNEY_ID;
 
-const activityTypes = [
-  { value: "all", label: "All Activities" },
-  { value: "legal_research", label: "Legal Research" },
-  { value: "client_meeting", label: "Client Meeting" },
-  { value: "court_appearance", label: "Court Appearance" },
-  { value: "document_review", label: "Document Review" },
-  { value: "phone_call", label: "Phone Call" },
-  { value: "administrative", label: "Administrative" },
-];
 
 export default function TimeTracking() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterActivity, setFilterActivity] = useState("all");
+  const [filterActivity, setFilterActivity] = useState("");
   const [isTimeModalOpen, setIsTimeModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null);
@@ -82,6 +73,72 @@ export default function TimeTracking() {
     },
   });
 
+  const pauseTimerMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await apiRequest("PATCH", `/api/time-entries/${id}/pause`);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/time-entries/active", ATTORNEY_ID] });
+      queryClient.invalidateQueries({ queryKey: ["/api/time-entries"] });
+      toast({
+        title: "Success",
+        description: "Timer paused",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to pause timer",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const resumeTimerMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await apiRequest("PATCH", `/api/time-entries/${id}/resume`);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/time-entries/active", ATTORNEY_ID] });
+      queryClient.invalidateQueries({ queryKey: ["/api/time-entries"] });
+      toast({
+        title: "Success",
+        description: "Timer resumed",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to resume timer",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const stopTimerMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await apiRequest("PATCH", `/api/time-entries/${id}/stop`);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/time-entries/active", ATTORNEY_ID] });
+      queryClient.invalidateQueries({ queryKey: ["/api/time-entries"] });
+      toast({
+        title: "Success",
+        description: "Timer stopped and duration rounded to 6-minute increment",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to stop timer",
+        variant: "destructive",
+      });
+    },
+  });
+
   const form = useForm({
     resolver: zodResolver(insertTimeEntrySchema.partial()),
     defaultValues: {
@@ -96,7 +153,7 @@ export default function TimeTracking() {
   const filteredEntries = timeEntries.filter((entry: TimeEntry) => {
     const matchesSearch = entry.activity?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          entry.description?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesActivity = filterActivity === "all" || entry.activity === filterActivity;
+    const matchesActivity = !filterActivity || entry.activity?.toLowerCase().includes(filterActivity.toLowerCase());
     return matchesSearch && matchesActivity;
   });
 
@@ -216,50 +273,81 @@ export default function TimeTracking() {
 
       {/* Active Timer Alert */}
       {activeEntry && (
-        <Card className="mb-6 border-green-200 bg-green-50">
+        <Card className="mb-6 border-green-200 bg-green-50 dark:bg-green-950 dark:border-green-800">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3">
                 <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
                 <div>
-                  <p className="text-sm font-medium text-foreground">Timer is running</p>
+                  <p className="text-sm font-medium text-foreground">
+                    {activeEntry.isPaused ? 'Timer is paused' : 'Timer is running'}
+                  </p>
                   <p className="text-xs text-muted-foreground">
-                    {activeEntry.activity?.replace('_', ' ')} - Started at {format(new Date(activeEntry.startTime), "h:mm a")}
+                    {activeEntry.activity} {activeEntry.utbmsCode && `(${activeEntry.utbmsCode})`} - Started at {format(new Date(activeEntry.startTime), "h:mm a")}
                   </p>
                 </div>
               </div>
-              <Badge variant="outline" className="border-green-500 text-green-700">
-                Active
-              </Badge>
+              <div className="flex items-center gap-2">
+                {activeEntry.isPaused ? (
+                  <Button
+                    size="sm"
+                    onClick={() => resumeTimerMutation.mutate(activeEntry.id)}
+                    disabled={resumeTimerMutation.isPending}
+                    data-testid="button-resume-timer"
+                  >
+                    <Play className="w-3 h-3 mr-1" />
+                    Resume
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => pauseTimerMutation.mutate(activeEntry.id)}
+                    disabled={pauseTimerMutation.isPending}
+                    data-testid="button-pause-timer"
+                  >
+                    <Pause className="w-3 h-3 mr-1" />
+                    Pause
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => stopTimerMutation.mutate(activeEntry.id)}
+                  disabled={stopTimerMutation.isPending}
+                  data-testid="button-stop-timer"
+                >
+                  <StopCircle className="w-3 h-3 mr-1" />
+                  Stop
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
       )}
 
       {/* Filters */}
-      <div className="flex items-center space-x-4 mb-6">
+      <div className="flex items-center gap-4 mb-6">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search time entries..."
+            placeholder="Search descriptions..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-9"
             data-testid="input-search-entries"
           />
         </div>
-        <Select value={filterActivity} onValueChange={setFilterActivity}>
-          <SelectTrigger className="w-48" data-testid="select-activity-filter">
-            <SelectValue placeholder="Filter by activity" />
-          </SelectTrigger>
-          <SelectContent>
-            {activityTypes.map((activity) => (
-              <SelectItem key={activity.value} value={activity.value}>
-                {activity.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="relative w-64">
+          <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Filter by activity type..."
+            value={filterActivity}
+            onChange={(e) => setFilterActivity(e.target.value)}
+            className="pl-9"
+            data-testid="input-activity-filter"
+          />
+        </div>
       </div>
 
       {/* Time Entries */}
@@ -269,7 +357,7 @@ export default function TimeTracking() {
             <CardContent className="p-12 text-center">
               <Clock className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
               <p className="text-muted-foreground" data-testid="text-no-entries">
-                {searchTerm || filterActivity !== "all"
+                {searchTerm || filterActivity
                   ? "No time entries found matching your criteria."
                   : "No time entries yet. Start your first timer to begin tracking time."}
               </p>
@@ -283,19 +371,45 @@ export default function TimeTracking() {
                 <CardContent className="p-6">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
-                      <div className="flex items-center space-x-2 mb-2">
+                      <div className="flex items-center flex-wrap gap-2 mb-2">
                         <h3 className="font-medium text-foreground" data-testid={`entry-activity-${entry.id}`}>
-                          {entry.activity?.replace('_', ' ')}
+                          {entry.activity}
                         </h3>
+                        {entry.utbmsCode && (
+                          <Badge variant="outline" className="text-xs font-mono">
+                            {entry.utbmsCode}
+                          </Badge>
+                        )}
                         {entry.isBillable ? (
                           <Badge variant="default" className="text-xs">Billable</Badge>
                         ) : (
                           <Badge variant="secondary" className="text-xs">Non-billable</Badge>
                         )}
-                        {!entry.endTime && (
-                          <Badge variant="outline" className="text-xs border-green-500 text-green-700">
-                            Running
-                          </Badge>
+                        {!entry.endTime ? (
+                          entry.isPaused ? (
+                            <Badge variant="outline" className="text-xs border-yellow-500 text-yellow-700 dark:text-yellow-400">
+                              Paused
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-xs border-green-500 text-green-700 dark:text-green-400">
+                              Running
+                            </Badge>
+                          )
+                        ) : (
+                          <>
+                            {entry.status === 'draft' && (
+                              <Badge variant="secondary" className="text-xs">Draft</Badge>
+                            )}
+                            {entry.status === 'ready_to_bill' && (
+                              <Badge variant="default" className="text-xs bg-blue-600 dark:bg-blue-700">Ready to Bill</Badge>
+                            )}
+                            {entry.status === 'invoiced' && (
+                              <Badge variant="default" className="text-xs bg-purple-600 dark:bg-purple-700">Invoiced</Badge>
+                            )}
+                            {entry.status === 'paid' && (
+                              <Badge variant="default" className="text-xs bg-green-600 dark:bg-green-700">Paid</Badge>
+                            )}
+                          </>
                         )}
                       </div>
 
@@ -311,7 +425,7 @@ export default function TimeTracking() {
                         </p>
                       )}
 
-                      <div className="flex items-center space-x-4 text-sm text-muted-foreground">
+                      <div className="flex items-center flex-wrap gap-3 text-sm text-muted-foreground">
                         <span data-testid={`entry-date-${entry.id}`}>
                           {format(new Date(entry.startTime), "MMM d, yyyy")}
                         </span>
@@ -320,11 +434,22 @@ export default function TimeTracking() {
                           {entry.endTime && ` - ${format(new Date(entry.endTime), "h:mm a")}`}
                         </span>
                         <span data-testid={`entry-duration-${entry.id}`}>
-                          {formatDuration(entry.duration)}
+                          {entry.roundedDuration ? (
+                            <span className="font-medium">
+                              {formatDuration(entry.roundedDuration)} <span className="text-xs">(rounded)</span>
+                            </span>
+                          ) : (
+                            formatDuration(entry.duration)
+                          )}
                         </span>
                         {entry.hourlyRate && (
                           <span data-testid={`entry-rate-${entry.id}`}>
                             ${entry.hourlyRate}/hr
+                          </span>
+                        )}
+                        {entry.pausedDuration && entry.pausedDuration > 0 && (
+                          <span className="text-xs italic">
+                            Paused: {formatDuration(entry.pausedDuration)}
                           </span>
                         )}
                       </div>
@@ -378,20 +503,12 @@ export default function TimeTracking() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Activity Type</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {activityTypes.slice(1).map((activity) => (
-                          <SelectItem key={activity.value} value={activity.value}>
-                            {activity.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <FormControl>
+                      <Input 
+                        {...field}
+                        placeholder="e.g., Legal Research"
+                      />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
