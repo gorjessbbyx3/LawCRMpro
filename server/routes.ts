@@ -682,9 +682,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Documents
-  app.get("/api/documents", async (req, res) => {
+  app.get("/api/documents", authMiddleware, async (req: AuthRequest, res) => {
     try {
-      const documents = await storage.getDocuments();
+      const { caseId, clientId, documentType, isTemplate } = req.query;
+      const userId = req.user!.id;
+      
+      let documents = await storage.getDocuments();
+      
+      // SECURITY: Filter to show only:
+      // 1. Documents uploaded by this user, OR
+      // 2. Shared templates (isTemplate = true)
+      documents = documents.filter(d => 
+        d.uploadedById === userId || d.isTemplate === true
+      );
+      
+      // Apply additional filters
+      if (caseId) {
+        documents = documents.filter(d => d.caseId === caseId);
+      }
+      if (clientId) {
+        documents = documents.filter(d => d.clientId === clientId);
+      }
+      if (documentType) {
+        documents = documents.filter(d => d.documentType === documentType);
+      }
+      if (isTemplate !== undefined) {
+        const isTemplateBool = isTemplate === 'true';
+        documents = documents.filter(d => d.isTemplate === isTemplateBool);
+      }
+      
       res.json(documents);
     } catch (error) {
       console.error("Error fetching documents:", error);
@@ -692,24 +718,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/documents", async (req, res) => {
+  app.delete("/api/documents/:id", authMiddleware, async (req: AuthRequest, res) => {
     try {
-      const documentData = insertDocumentSchema.parse(req.body);
-      const document = await storage.createDocument(documentData);
-      res.status(201).json(document);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Invalid document data", errors: error.errors });
+      const { ObjectStorageService } = await import("./objectStorage");
+      const userId = req.user!.id;
+      
+      const document = await storage.getDocument(req.params.id);
+      if (!document) {
+        return res.status(404).json({ message: "Document not found" });
       }
-      console.error("Error creating document:", error);
-      res.status(500).json({ message: "Failed to create document" });
+      
+      // Check ownership
+      if (document.uploadedById !== userId) {
+        return res.status(403).json({ message: "Not authorized to delete this document" });
+      }
+      
+      // Delete from object storage
+      if (document.filePath) {
+        try {
+          const objectStorageService = new ObjectStorageService();
+          const objectFile = await objectStorageService.getObjectEntityFile(document.filePath);
+          await objectFile.delete();
+        } catch (error) {
+          console.error("Error deleting from object storage:", error);
+        }
+      }
+      
+      await storage.deleteDocument(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting document:", error);
+      res.status(500).json({ message: "Failed to delete document" });
     }
   });
 
   // Calendar Events
-  app.get("/api/calendar/events", async (req, res) => {
+  app.get("/api/calendar/events", authMiddleware, async (req: AuthRequest, res) => {
     try {
-      const events = await storage.getCalendarEvents();
+      const { caseId, clientId, eventType, status, startDate, endDate } = req.query;
+      
+      let events = await storage.getCalendarEvents();
+      
+      // Apply filters
+      if (caseId) {
+        events = events.filter(e => e.caseId === caseId);
+      }
+      if (clientId) {
+        events = events.filter(e => e.clientId === clientId);
+      }
+      if (eventType) {
+        events = events.filter(e => e.eventType === eventType);
+      }
+      if (status) {
+        events = events.filter(e => e.status === status);
+      }
+      if (startDate) {
+        events = events.filter(e => new Date(e.startTime) >= new Date(startDate as string));
+      }
+      if (endDate) {
+        events = events.filter(e => new Date(e.endTime) <= new Date(endDate as string));
+      }
+      
       res.json(events);
     } catch (error) {
       console.error("Error fetching calendar events:", error);
@@ -717,9 +786,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/calendar/events", async (req, res) => {
+  app.post("/api/calendar/events", authMiddleware, async (req: AuthRequest, res) => {
     try {
       const eventData = insertCalendarEventSchema.parse(req.body);
+      
+      // Validate start < end
+      if (new Date(eventData.startTime) >= new Date(eventData.endTime)) {
+        return res.status(400).json({ message: "Start time must be before end time" });
+      }
+      
       const event = await storage.createCalendarEvent(eventData);
       res.status(201).json(event);
     } catch (error) {
@@ -728,6 +803,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       console.error("Error creating calendar event:", error);
       res.status(500).json({ message: "Failed to create calendar event" });
+    }
+  });
+
+  app.put("/api/calendar/events/:id", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const updates = req.body;
+      
+      // Validate start < end if both provided
+      if (updates.startTime && updates.endTime) {
+        if (new Date(updates.startTime) >= new Date(updates.endTime)) {
+          return res.status(400).json({ message: "Start time must be before end time" });
+        }
+      }
+      
+      const event = await storage.updateCalendarEvent(req.params.id, updates);
+      res.json(event);
+    } catch (error) {
+      console.error("Error updating calendar event:", error);
+      res.status(500).json({ message: "Failed to update calendar event" });
+    }
+  });
+
+  app.delete("/api/calendar/events/:id", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      await storage.deleteCalendarEvent(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting calendar event:", error);
+      res.status(500).json({ message: "Failed to delete calendar event" });
     }
   });
 

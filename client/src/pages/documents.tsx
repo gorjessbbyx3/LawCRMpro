@@ -38,11 +38,7 @@ export default function Documents() {
       clientId?: string;
       tags?: string[];
     }) => {
-      const response = await apiRequest("/api/documents", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
+      const response = await apiRequest("PUT", "/api/documents", data);
       return response.json();
     },
     onSuccess: () => {
@@ -62,9 +58,7 @@ export default function Documents() {
   });
 
   const handleGetUploadParameters = async () => {
-    const response = await apiRequest("/api/objects/upload", {
-      method: "POST",
-    });
+    const response = await apiRequest("POST", "/api/objects/upload");
     const data = await response.json();
     return {
       method: "PUT" as const,
@@ -73,12 +67,12 @@ export default function Documents() {
   };
 
   const handleUploadComplete = (result: UploadResult<Record<string, unknown>, Record<string, unknown>>) => {
-    const uploadedFile = result.successful[0];
+    const uploadedFile = result.successful?.[0];
     if (uploadedFile && uploadedFile.uploadURL) {
       uploadMutation.mutate({
-        uploadURL: uploadedFile.uploadURL,
-        name: uploadedFile.name,
-        filename: uploadedFile.name,
+        uploadURL: uploadedFile.uploadURL as string,
+        name: uploadedFile.name as string,
+        filename: uploadedFile.name as string,
         fileSize: uploadedFile.size || 0,
         mimeType: uploadedFile.type || "application/octet-stream",
         documentType: filterType !== "all" ? filterType : undefined,
@@ -91,7 +85,7 @@ export default function Documents() {
     window.open(document.filePath, "_blank");
   };
 
-  const filteredDocuments = documents.filter((doc: Document) => {
+  const filteredDocuments = (documents as Document[]).filter((doc: Document) => {
     const matchesSearch = doc.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          doc.documentType?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesType = filterType === "all" || doc.documentType === filterType;
@@ -212,7 +206,7 @@ export default function Documents() {
                       Size: {formatFileSize(document.fileSize)}
                     </p>
                     <p data-testid={`upload-date-${document.id}`}>
-                      Uploaded: {format(new Date(document.createdAt), "MMM d, yyyy")}
+                      Uploaded: {document.createdAt ? format(new Date(document.createdAt), "MMM d, yyyy") : "Unknown"}
                     </p>
                     {document.version && document.version > 1 && (
                       <p data-testid={`version-${document.id}`}>
