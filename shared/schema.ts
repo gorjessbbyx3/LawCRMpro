@@ -23,9 +23,11 @@ export const users = pgTable("users", {
   password: text("password").notNull(),
   firstName: text("first_name").notNull(),
   lastName: text("last_name").notNull(),
+  role: text("role").notNull().default("attorney"), // attorney, secretary, paralegal, admin
   barNumber: text("bar_number"),
   phone: text("phone"),
   avatar: text("avatar"),
+  isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow()
 });

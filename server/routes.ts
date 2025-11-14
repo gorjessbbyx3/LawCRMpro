@@ -4,13 +4,206 @@ import { storage } from "./storage";
 import { 
   insertClientSchema, insertCaseSchema, insertTimeEntrySchema, 
   insertInvoiceSchema, insertDocumentSchema, insertCalendarEventSchema,
-  insertMessageSchema, insertAiConversationSchema
+  insertMessageSchema, insertAiConversationSchema, insertUserSchema
 } from "@shared/schema";
 import { z } from "zod";
+import { 
+  hashPassword, comparePassword, generateToken, 
+  authMiddleware, optionalAuthMiddleware, requireRole,
+  type AuthRequest 
+} from "./auth";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  
+  // Authentication Routes (public)
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const { username, password } = req.body;
+
+      if (!username || !password) {
+        return res.status(400).json({ error: "Username and password required" });
+      }
+
+      const user = await storage.getUserByUsername(username);
+      
+      if (!user) {
+        return res.status(401).json({ error: "Invalid credentials" });
+      }
+
+      if (!user.isActive) {
+        return res.status(403).json({ error: "Account is inactive" });
+      }
+
+      const isValidPassword = await comparePassword(password, user.password);
+      
+      if (!isValidPassword) {
+        return res.status(401).json({ error: "Invalid credentials" });
+      }
+
+      const token = generateToken({
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        firstName: user.firstName,
+        lastName: user.lastName
+      });
+
+      res.cookie('token', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000
+      });
+
+      res.json({
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          role: user.role,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          barNumber: user.barNumber,
+          phone: user.phone,
+          avatar: user.avatar
+        }
+      });
+    } catch (error) {
+      console.error("Login error:", error);
+      res.status(500).json({ error: "Login failed" });
+    }
+  });
+
+  app.post("/api/auth/logout", (req, res) => {
+    res.clearCookie('token');
+    res.json({ message: "Logged out successfully" });
+  });
+
+  app.get("/api/auth/me", optionalAuthMiddleware, async (req: AuthRequest, res) => {
+    if (!req.user) {
+      return res.json(null);
+    }
+
+    try {
+      const user = await storage.getUser(req.user.id);
+      if (!user) {
+        return res.json(null);
+      }
+
+      res.json({
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        barNumber: user.barNumber,
+        phone: user.phone,
+        avatar: user.avatar
+      });
+    } catch (error) {
+      console.error("Error fetching user:", error);
+      res.json(null);
+    }
+  });
+
+  // User Management (protected, admin only)
+  app.get("/api/users", authMiddleware, requireRole('attorney', 'admin'), async (req, res) => {
+    try {
+      const users = await storage.getUsers();
+      res.json(users.map(u => ({
+        id: u.id,
+        username: u.username,
+        email: u.email,
+        role: u.role,
+        firstName: u.firstName,
+        lastName: u.lastName,
+        barNumber: u.barNumber,
+        phone: u.phone,
+        isActive: u.isActive,
+        createdAt: u.createdAt
+      })));
+    } catch (error) {
+      console.error("Error fetching users:", error);
+      res.status(500).json({ error: "Failed to fetch users" });
+    }
+  });
+
+  app.post("/api/users", authMiddleware, requireRole('attorney', 'admin'), async (req, res) => {
+    try {
+      const userData = insertUserSchema.parse(req.body);
+      const hashedPassword = await hashPassword(userData.password);
+      
+      const user = await storage.createUser({
+        ...userData,
+        password: hashedPassword
+      });
+
+      res.status(201).json({
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        firstName: user.firstName,
+        lastName: user.lastName
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid user data", errors: error.errors });
+      }
+      console.error("Error creating user:", error);
+      res.status(500).json({ error: "Failed to create user" });
+    }
+  });
+
+  app.put("/api/users/:id", authMiddleware, requireRole('attorney', 'admin'), async (req, res) => {
+    try {
+      const updateData: any = { ...req.body };
+      delete updateData.id;
+      delete updateData.createdAt;
+      delete updateData.updatedAt;
+      
+      if (updateData.password) {
+        if (typeof updateData.password === 'string' && updateData.password.length > 0) {
+          updateData.password = await hashPassword(updateData.password);
+        } else {
+          delete updateData.password;
+        }
+      }
+
+      const user = await storage.updateUser(req.params.id, updateData);
+      
+      res.json({
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        isActive: user.isActive
+      });
+    } catch (error) {
+      console.error("Error updating user:", error);
+      res.status(500).json({ error: "Failed to update user" });
+    }
+  });
+
+  app.delete("/api/users/:id", authMiddleware, requireRole('attorney', 'admin'), async (req, res) => {
+    try {
+      await storage.deleteUser(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting user:", error);
+      res.status(500).json({ error: "Failed to delete user" });
+    }
+  });
+
+  // All routes below are protected
+  app.use('/api', authMiddleware);
+
   // Dashboard
-  app.get("/api/dashboard/metrics", async (req, res) => {
+  app.get("/api/dashboard/metrics", async (req: AuthRequest, res) => {
     try {
       const metrics = await storage.getDashboardMetrics();
       res.json(metrics);
