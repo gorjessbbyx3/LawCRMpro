@@ -1,4 +1,4 @@
-import { Switch, Route, Redirect, useRoute } from "wouter";
+import { Switch, Route, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -19,8 +19,7 @@ import AiAssistant from "@/pages/ai-assistant";
 import Reports from "@/pages/reports";
 import Compliance from "@/pages/compliance";
 import Settings from "@/pages/settings";
-import Sidebar from "@/components/layout/sidebar";
-import TopBar from "@/components/layout/topbar";
+import MainLayout from "@/components/main-layout";
 import PortalLogin from "@/pages/portal/portal-login";
 import PortalDashboard from "@/pages/portal/portal-dashboard";
 import PortalCases from "@/pages/portal/portal-cases";
@@ -46,7 +45,11 @@ function ProtectedRoute({ component: Component }: { component: () => JSX.Element
     return <Redirect to="/login" />;
   }
 
-  return <Component />;
+  return (
+    <MainLayout>
+      <Component />
+    </MainLayout>
+  );
 }
 
 function Router() {
@@ -67,161 +70,45 @@ function Router() {
       </Route>
       <Route path="/">
         {user ? (
-          <div className="flex h-screen bg-background">
-            <Sidebar />
-            <main className="flex-1 overflow-hidden flex flex-col">
-              <TopBar />
-              <div className="flex-1 overflow-y-auto">
-                <Dashboard />
-              </div>
-            </main>
-          </div>
+          <MainLayout>
+            <Dashboard />
+          </MainLayout>
         ) : (
           <Redirect to="/login" />
         )}
       </Route>
       <Route path="/clients">
-        <ProtectedRoute component={() => (
-          <div className="flex h-screen bg-background">
-            <Sidebar />
-            <main className="flex-1 overflow-hidden flex flex-col">
-              <TopBar />
-              <div className="flex-1 overflow-y-auto">
-                <Clients />
-              </div>
-            </main>
-          </div>
-        )} />
+        <ProtectedRoute component={Clients} />
       </Route>
       <Route path="/cases">
-        <ProtectedRoute component={() => (
-          <div className="flex h-screen bg-background">
-            <Sidebar />
-            <main className="flex-1 overflow-hidden flex flex-col">
-              <TopBar />
-              <div className="flex-1 overflow-y-auto">
-                <Cases />
-              </div>
-            </main>
-          </div>
-        )} />
+        <ProtectedRoute component={Cases} />
       </Route>
       <Route path="/calendar">
-        <ProtectedRoute component={() => (
-          <div className="flex h-screen bg-background">
-            <Sidebar />
-            <main className="flex-1 overflow-hidden flex flex-col">
-              <TopBar />
-              <div className="flex-1 overflow-y-auto">
-                <Calendar />
-              </div>
-            </main>
-          </div>
-        )} />
+        <ProtectedRoute component={Calendar} />
       </Route>
       <Route path="/documents">
-        <ProtectedRoute component={() => (
-          <div className="flex h-screen bg-background">
-            <Sidebar />
-            <main className="flex-1 overflow-hidden flex flex-col">
-              <TopBar />
-              <div className="flex-1 overflow-y-auto">
-                <Documents />
-              </div>
-            </main>
-          </div>
-        )} />
+        <ProtectedRoute component={Documents} />
       </Route>
       <Route path="/time-tracking">
-        <ProtectedRoute component={() => (
-          <div className="flex h-screen bg-background">
-            <Sidebar />
-            <main className="flex-1 overflow-hidden flex flex-col">
-              <TopBar />
-              <div className="flex-1 overflow-y-auto">
-                <TimeTracking />
-              </div>
-            </main>
-          </div>
-        )} />
+        <ProtectedRoute component={TimeTracking} />
       </Route>
       <Route path="/invoicing">
-        <ProtectedRoute component={() => (
-          <div className="flex h-screen bg-background">
-            <Sidebar />
-            <main className="flex-1 overflow-hidden flex flex-col">
-              <TopBar />
-              <div className="flex-1 overflow-y-auto">
-                <Invoicing />
-              </div>
-            </main>
-          </div>
-        )} />
+        <ProtectedRoute component={Invoicing} />
       </Route>
       <Route path="/messages">
-        <ProtectedRoute component={() => (
-          <div className="flex h-screen bg-background">
-            <Sidebar />
-            <main className="flex-1 overflow-hidden flex flex-col">
-              <TopBar />
-              <div className="flex-1 overflow-y-auto">
-                <Messages />
-              </div>
-            </main>
-          </div>
-        )} />
+        <ProtectedRoute component={Messages} />
       </Route>
       <Route path="/ai-assistant">
-        <ProtectedRoute component={() => (
-          <div className="flex h-screen bg-background">
-            <Sidebar />
-            <main className="flex-1 overflow-hidden flex flex-col">
-              <TopBar />
-              <div className="flex-1 overflow-y-auto">
-                <AiAssistant />
-              </div>
-            </main>
-          </div>
-        )} />
+        <ProtectedRoute component={AiAssistant} />
       </Route>
       <Route path="/reports">
-        <ProtectedRoute component={() => (
-          <div className="flex h-screen bg-background">
-            <Sidebar />
-            <main className="flex-1 overflow-hidden flex flex-col">
-              <TopBar />
-              <div className="flex-1 overflow-y-auto">
-                <Reports />
-              </div>
-            </main>
-          </div>
-        )} />
+        <ProtectedRoute component={Reports} />
       </Route>
       <Route path="/compliance">
-        <ProtectedRoute component={() => (
-          <div className="flex h-screen bg-background">
-            <Sidebar />
-            <main className="flex-1 overflow-hidden flex flex-col">
-              <TopBar />
-              <div className="flex-1 overflow-y-auto">
-                <Compliance />
-              </div>
-            </main>
-          </div>
-        )} />
+        <ProtectedRoute component={Compliance} />
       </Route>
       <Route path="/settings">
-        <ProtectedRoute component={() => (
-          <div className="flex h-screen bg-background">
-            <Sidebar />
-            <main className="flex-1 overflow-hidden flex flex-col">
-              <TopBar />
-              <div className="flex-1 overflow-y-auto">
-                <Settings />
-              </div>
-            </main>
-          </div>
-        )} />
+        <ProtectedRoute component={Settings} />
       </Route>
       
       {/* Portal Routes */}

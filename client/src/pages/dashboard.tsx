@@ -4,16 +4,26 @@ import RecentActivity from "@/components/dashboard/recent-activity";
 import QuickActions from "@/components/dashboard/quick-actions";
 import UpcomingDeadlines from "@/components/dashboard/upcoming-deadlines";
 import CaseProgress from "@/components/dashboard/case-progress";
+import { useAuth } from "@/lib/auth-context";
+
+interface DashboardMetrics {
+  activeCases: number;
+  monthlyRevenue: string;
+  billableHours: number;
+  upcomingCourtDates: number;
+}
 
 export default function Dashboard() {
-  const { data: metrics, isLoading } = useQuery({
+  const { user } = useAuth();
+  const { data: metrics, isLoading } = useQuery<DashboardMetrics>({
     queryKey: ["/api/dashboard/metrics"],
+    enabled: !!user,
   });
 
   if (isLoading) {
     return (
-      <div className="p-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <div className="p-4 sm:p-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
           {[...Array(4)].map((_, i) => (
             <div key={i} className="bg-card p-6 rounded-lg border border-border animate-pulse">
               <div className="h-20 bg-muted rounded"></div>
@@ -25,9 +35,9 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       {/* Dashboard Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
         <MetricCard
           title="Active Cases"
           value={metrics?.activeCases || 0}
@@ -56,14 +66,14 @@ export default function Dashboard() {
           title="Court Dates"
           value={metrics?.upcomingCourtDates || 0}
           change={`${metrics?.upcomingCourtDates || 0} this week`}
-          trend={metrics?.upcomingCourtDates > 0 ? "warning" : "neutral"}
+          trend={(metrics?.upcomingCourtDates ?? 0) > 0 ? "warning" : "up"}
           icon="gavel"
           color="red"
         />
       </div>
 
       {/* Recent Activity & Quick Actions */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
         <div className="lg:col-span-2">
           <RecentActivity />
         </div>
@@ -71,7 +81,7 @@ export default function Dashboard() {
       </div>
 
       {/* Upcoming Deadlines & Case Progress */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         <UpcomingDeadlines />
         <CaseProgress />
       </div>
