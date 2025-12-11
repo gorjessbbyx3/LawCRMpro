@@ -10,6 +10,7 @@ import {
   PortalAuthRequest 
 } from "./portalAuth";
 import { authMiddleware, AuthRequest } from "./auth";
+import { emailService } from "./email";
 
 export function registerPortalRoutes(app: Express) {
   // Portal Authentication Routes
@@ -219,9 +220,27 @@ export function registerPortalRoutes(app: Express) {
         isActive: false
       });
 
+      const invitationLink = `/portal/accept-invitation?token=${invitationToken}`;
+      let emailSent = false;
+      let emailError: string | undefined;
+
+      if (emailService.isConfigured()) {
+        const attorneyName = `${req.user!.firstName} ${req.user!.lastName}`;
+        const result = await emailService.sendPortalInvitation(
+          email,
+          firstName,
+          invitationToken,
+          attorneyName
+        );
+        emailSent = result.success;
+        emailError = result.error;
+      }
+
       res.json({ 
         portalUser,
-        invitationLink: `/portal/accept-invitation?token=${invitationToken}`
+        invitationLink,
+        emailSent,
+        emailError: emailSent ? undefined : (emailError || 'Email service not configured')
       });
     } catch (error) {
       console.error("Create portal invitation error:", error);
@@ -399,9 +418,10 @@ export function registerPortalRoutes(app: Express) {
         return res.status(400).json({ error: "Message content is required" });
       }
 
+      let caseData = null;
       // Verify client owns this case if caseId provided
       if (caseId) {
-        const caseData = await storage.getCase(caseId);
+        caseData = await storage.getCase(caseId);
         if (!caseData || caseData.clientId !== req.portalUser!.clientId) {
           return res.status(403).json({ error: "Access denied" });
         }
@@ -416,6 +436,22 @@ export function registerPortalRoutes(app: Express) {
         senderType: 'client',
         senderPortalUserId: req.portalUser!.id
       });
+
+      // Send email notification to attorney if configured
+      if (emailService.isConfigured() && caseData?.attorneyId) {
+        const attorney = await storage.getUser(caseData.attorneyId);
+        if (attorney?.email) {
+          const senderName = `${portalUser?.firstName} ${portalUser?.lastName}`;
+          const preview = content.substring(0, 200) + (content.length > 200 ? '...' : '');
+          await emailService.sendMessageNotification(
+            attorney.email,
+            `${attorney.firstName} ${attorney.lastName}`,
+            senderName,
+            preview,
+            caseData.caseNumber || caseData.title
+          );
+        }
+      }
 
       res.json(message);
     } catch (error) {

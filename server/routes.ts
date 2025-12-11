@@ -14,6 +14,7 @@ import {
   type AuthRequest 
 } from "./auth";
 import { registerPortalRoutes } from "./portalRoutes";
+import { emailService } from "./email";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Register portal routes
@@ -1104,6 +1105,125 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching AI conversations:", error);
       res.status(500).json({ message: "Failed to fetch conversations" });
+    }
+  });
+
+  // Email Routes
+  app.get("/api/email/status", authMiddleware, (req, res) => {
+    res.json({ configured: emailService.isConfigured() });
+  });
+
+  app.post("/api/email/send", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      if (!emailService.isConfigured()) {
+        return res.status(503).json({ error: "Email service not configured. Please set GODADDY_EMAIL_USER and GODADDY_EMAIL_PASSWORD environment variables." });
+      }
+
+      const { to, subject, text, html } = req.body;
+
+      if (!to || !subject || (!text && !html)) {
+        return res.status(400).json({ error: "Recipient, subject, and content are required" });
+      }
+
+      const result = await emailService.sendEmail({ to, subject, text, html });
+      
+      if (result.success) {
+        res.json({ success: true, messageId: result.messageId });
+      } else {
+        res.status(500).json({ success: false, error: result.error });
+      }
+    } catch (error: any) {
+      console.error("Send email error:", error);
+      res.status(500).json({ error: error.message || "Failed to send email" });
+    }
+  });
+
+  app.post("/api/email/send-invoice", authMiddleware, requireRole('attorney', 'admin'), async (req: AuthRequest, res) => {
+    try {
+      if (!emailService.isConfigured()) {
+        return res.status(503).json({ error: "Email service not configured" });
+      }
+
+      const { invoiceId } = req.body;
+
+      if (!invoiceId) {
+        return res.status(400).json({ error: "Invoice ID is required" });
+      }
+
+      const invoice = await storage.getInvoice(invoiceId);
+      if (!invoice) {
+        return res.status(404).json({ error: "Invoice not found" });
+      }
+
+      const client = await storage.getClient(invoice.clientId);
+      if (!client || !client.email) {
+        return res.status(400).json({ error: "Client email not found" });
+      }
+
+      const result = await emailService.sendInvoiceEmail(
+        client.email,
+        `${client.firstName} ${client.lastName}`,
+        invoice.invoiceNumber,
+        Number(invoice.totalAmount),
+        invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString() : 'Upon Receipt'
+      );
+
+      if (result.success) {
+        res.json({ success: true, message: "Invoice email sent successfully" });
+      } else {
+        res.status(500).json({ success: false, error: result.error });
+      }
+    } catch (error: any) {
+      console.error("Send invoice email error:", error);
+      res.status(500).json({ error: error.message || "Failed to send invoice email" });
+    }
+  });
+
+  app.post("/api/email/send-event-reminder", authMiddleware, requireRole('attorney', 'admin'), async (req: AuthRequest, res) => {
+    try {
+      if (!emailService.isConfigured()) {
+        return res.status(503).json({ error: "Email service not configured" });
+      }
+
+      const { eventId } = req.body;
+
+      if (!eventId) {
+        return res.status(400).json({ error: "Event ID is required" });
+      }
+
+      const event = await storage.getCalendarEvent(eventId);
+      if (!event) {
+        return res.status(404).json({ error: "Event not found" });
+      }
+
+      if (!event.clientId) {
+        return res.status(400).json({ error: "Event has no associated client" });
+      }
+
+      const client = await storage.getClient(event.clientId);
+      if (!client || !client.email) {
+        return res.status(400).json({ error: "Client email not found" });
+      }
+
+      const eventDate = new Date(event.startTime);
+      const result = await emailService.sendEventReminder(
+        client.email,
+        `${client.firstName} ${client.lastName}`,
+        event.title,
+        eventDate.toLocaleDateString(),
+        eventDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        event.eventType,
+        event.location || undefined
+      );
+
+      if (result.success) {
+        res.json({ success: true, message: "Event reminder sent successfully" });
+      } else {
+        res.status(500).json({ success: false, error: result.error });
+      }
+    } catch (error: any) {
+      console.error("Send event reminder error:", error);
+      res.status(500).json({ error: error.message || "Failed to send event reminder" });
     }
   });
 

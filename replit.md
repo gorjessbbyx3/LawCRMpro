@@ -177,7 +177,27 @@ Enterprise-grade legal practice management system built for Hawaii attorneys wit
 
 ## Recent Changes (December 11, 2025)
 
-### Phase 6 Complete - Client Portal (Latest)
+### GoDaddy Email Integration (Latest)
+- **Email service module**: server/email.ts with GoDaddy SMTP configuration (smtpout.secureserver.net)
+- **Email templates**: Portal invitations, invoice notifications, event reminders, message notifications
+- **Auto-send invitations**: Portal invitations automatically email clients when email is configured
+- **Message notifications**: Attorneys receive email when clients send portal messages
+- **API endpoints**: Send custom emails, invoice emails, event reminders
+- **Role-based access**: Email sending restricted to attorney/admin roles
+- **Graceful fallback**: App works without email when not configured
+
+**Environment Variables Required:**
+- `GODADDY_EMAIL_USER` - Your GoDaddy email address
+- `GODADDY_EMAIL_PASSWORD` - Your email password
+- `APP_URL` - Your app's public URL (for invitation links)
+
+**Email Routes:**
+- `GET /api/email/status` - Check if email is configured
+- `POST /api/email/send` - Send custom email
+- `POST /api/email/send-invoice` - Send invoice notification (attorney/admin only)
+- `POST /api/email/send-event-reminder` - Send event reminder (attorney/admin only)
+
+### Phase 6 Complete - Client Portal
 - **Portal database schema**: Created portal_users and portal_messages tables with proper relationships
 - **Separate authentication**: Portal uses portal_token cookie with isolated JWT system from attorney auth
 - **Invitation system**: 7-day expiring tokens, single-use enforcement, token cleared upon acceptance
