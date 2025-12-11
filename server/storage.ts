@@ -1,14 +1,15 @@
 import { 
   users, clients, cases, timeEntries, invoices, invoiceItems, 
   documents, calendarEvents, messages, aiConversations, complianceDeadlines,
-  rateTables, activityTemplates,
+  rateTables, activityTemplates, portalUsers, portalMessages,
   type User, type InsertUser, type Client, type InsertClient,
   type Case, type InsertCase, type TimeEntry, type InsertTimeEntry,
   type Invoice, type InsertInvoice, type Document, type InsertDocument,
   type CalendarEvent, type InsertCalendarEvent, type Message, type InsertMessage,
   type AiConversation, type InsertAiConversation,
   type RateTable, type InsertRateTable, type ActivityTemplate, type InsertActivityTemplate,
-  type ComplianceDeadline, type InsertComplianceDeadline
+  type ComplianceDeadline, type InsertComplianceDeadline,
+  type PortalUser, type InsertPortalUser, type PortalMessage, type InsertPortalMessage
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, like, or, sql, isNull, inArray } from "drizzle-orm";
@@ -112,6 +113,27 @@ export interface IStorage {
   createComplianceDeadline(deadline: InsertComplianceDeadline): Promise<ComplianceDeadline>;
   updateComplianceDeadline(id: string, deadline: Partial<InsertComplianceDeadline>): Promise<ComplianceDeadline>;
   deleteComplianceDeadline(id: string): Promise<void>;
+
+  // Portal Users
+  getPortalUser(id: string): Promise<PortalUser | undefined>;
+  getPortalUserByEmail(email: string): Promise<PortalUser | undefined>;
+  getPortalUserByClientId(clientId: string): Promise<PortalUser | undefined>;
+  getPortalUserByInvitationToken(token: string): Promise<PortalUser | undefined>;
+  getPortalUsersByAttorney(attorneyId: string): Promise<PortalUser[]>;
+  createPortalUser(portalUser: InsertPortalUser): Promise<PortalUser>;
+  updatePortalUser(id: string, data: Partial<InsertPortalUser>): Promise<PortalUser>;
+  deletePortalUser(id: string): Promise<void>;
+
+  // Portal Messages
+  getPortalMessagesByCase(caseId: string): Promise<PortalMessage[]>;
+  getPortalMessagesForClient(clientId: string): Promise<PortalMessage[]>;
+  createPortalMessage(message: InsertPortalMessage): Promise<PortalMessage>;
+  markPortalMessageAsRead(id: string): Promise<void>;
+
+  // Portal-specific queries
+  getClientCases(clientId: string): Promise<Case[]>;
+  getClientInvoices(clientId: string): Promise<Invoice[]>;
+  getClientCalendarEvents(clientId: string): Promise<CalendarEvent[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -693,6 +715,94 @@ export class DatabaseStorage implements IStorage {
 
   async deleteComplianceDeadline(id: string): Promise<void> {
     await db.delete(complianceDeadlines).where(eq(complianceDeadlines.id, id));
+  }
+
+  // Portal Users
+  async getPortalUser(id: string): Promise<PortalUser | undefined> {
+    const [portalUser] = await db.select().from(portalUsers).where(eq(portalUsers.id, id));
+    return portalUser || undefined;
+  }
+
+  async getPortalUserByEmail(email: string): Promise<PortalUser | undefined> {
+    const [portalUser] = await db.select().from(portalUsers).where(eq(portalUsers.email, email));
+    return portalUser || undefined;
+  }
+
+  async getPortalUserByClientId(clientId: string): Promise<PortalUser | undefined> {
+    const [portalUser] = await db.select().from(portalUsers).where(eq(portalUsers.clientId, clientId));
+    return portalUser || undefined;
+  }
+
+  async getPortalUserByInvitationToken(token: string): Promise<PortalUser | undefined> {
+    const [portalUser] = await db.select().from(portalUsers).where(eq(portalUsers.invitationToken, token));
+    return portalUser || undefined;
+  }
+
+  async getPortalUsersByAttorney(attorneyId: string): Promise<PortalUser[]> {
+    return await db.select().from(portalUsers).where(eq(portalUsers.invitedById, attorneyId));
+  }
+
+  async createPortalUser(portalUser: InsertPortalUser): Promise<PortalUser> {
+    const [newPortalUser] = await db.insert(portalUsers).values(portalUser).returning();
+    return newPortalUser;
+  }
+
+  async updatePortalUser(id: string, data: Partial<InsertPortalUser>): Promise<PortalUser> {
+    const [updatedPortalUser] = await db
+      .update(portalUsers)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(portalUsers.id, id))
+      .returning();
+    return updatedPortalUser;
+  }
+
+  async deletePortalUser(id: string): Promise<void> {
+    await db.delete(portalUsers).where(eq(portalUsers.id, id));
+  }
+
+  // Portal Messages
+  async getPortalMessagesByCase(caseId: string): Promise<PortalMessage[]> {
+    return await db
+      .select()
+      .from(portalMessages)
+      .where(eq(portalMessages.caseId, caseId))
+      .orderBy(desc(portalMessages.createdAt));
+  }
+
+  async getPortalMessagesForClient(clientId: string): Promise<PortalMessage[]> {
+    const portalUser = await this.getPortalUserByClientId(clientId);
+    if (!portalUser) return [];
+
+    return await db
+      .select()
+      .from(portalMessages)
+      .where(eq(portalMessages.senderPortalUserId, portalUser.id))
+      .orderBy(desc(portalMessages.createdAt));
+  }
+
+  async createPortalMessage(message: InsertPortalMessage): Promise<PortalMessage> {
+    const [newMessage] = await db.insert(portalMessages).values(message).returning();
+    return newMessage;
+  }
+
+  async markPortalMessageAsRead(id: string): Promise<void> {
+    await db
+      .update(portalMessages)
+      .set({ isRead: true, readAt: new Date() })
+      .where(eq(portalMessages.id, id));
+  }
+
+  // Portal-specific queries
+  async getClientCases(clientId: string): Promise<Case[]> {
+    return await db.select().from(cases).where(eq(cases.clientId, clientId)).orderBy(desc(cases.createdAt));
+  }
+
+  async getClientInvoices(clientId: string): Promise<Invoice[]> {
+    return await db.select().from(invoices).where(eq(invoices.clientId, clientId)).orderBy(desc(invoices.createdAt));
+  }
+
+  async getClientCalendarEvents(clientId: string): Promise<CalendarEvent[]> {
+    return await db.select().from(calendarEvents).where(eq(calendarEvents.clientId, clientId)).orderBy(calendarEvents.startTime);
   }
 }
 

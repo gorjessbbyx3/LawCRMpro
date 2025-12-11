@@ -235,6 +235,38 @@ export const activityTemplates = pgTable("activity_templates", {
   createdAt: timestamp("created_at").defaultNow()
 });
 
+// Portal users - Client portal access accounts
+export const portalUsers = pgTable("portal_users", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  clientId: uuid("client_id").references(() => clients.id).notNull(),
+  email: text("email").notNull().unique(),
+  password: text("password"), // Null until invitation is accepted
+  firstName: text("first_name").notNull(),
+  lastName: text("last_name").notNull(),
+  phone: text("phone"),
+  invitationToken: text("invitation_token"), // One-time token for account setup
+  invitationExpiresAt: timestamp("invitation_expires_at"),
+  invitedById: uuid("invited_by_id").references(() => users.id),
+  isActive: boolean("is_active").default(false), // Activated after accepting invitation
+  lastLoginAt: timestamp("last_login_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow()
+});
+
+// Portal messages - Client-attorney communication
+export const portalMessages = pgTable("portal_messages", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  caseId: uuid("case_id").references(() => cases.id),
+  subject: text("subject"),
+  content: text("content").notNull(),
+  senderType: text("sender_type").notNull(), // "client" or "attorney"
+  senderPortalUserId: uuid("sender_portal_user_id").references(() => portalUsers.id),
+  senderUserId: uuid("sender_user_id").references(() => users.id),
+  isRead: boolean("is_read").default(false),
+  readAt: timestamp("read_at"),
+  createdAt: timestamp("created_at").defaultNow()
+});
+
 // Define relations
 export const usersRelations = relations(users, ({ many }) => ({
   cases: many(cases),
@@ -297,6 +329,33 @@ export const rateTablesRelations = relations(rateTables, ({ one }) => ({
 export const activityTemplatesRelations = relations(activityTemplates, ({ one }) => ({
   attorney: one(users, {
     fields: [activityTemplates.attorneyId],
+    references: [users.id]
+  })
+}));
+
+export const portalUsersRelations = relations(portalUsers, ({ one, many }) => ({
+  client: one(clients, {
+    fields: [portalUsers.clientId],
+    references: [clients.id]
+  }),
+  invitedBy: one(users, {
+    fields: [portalUsers.invitedById],
+    references: [users.id]
+  }),
+  sentMessages: many(portalMessages)
+}));
+
+export const portalMessagesRelations = relations(portalMessages, ({ one }) => ({
+  case: one(cases, {
+    fields: [portalMessages.caseId],
+    references: [cases.id]
+  }),
+  senderPortalUser: one(portalUsers, {
+    fields: [portalMessages.senderPortalUserId],
+    references: [portalUsers.id]
+  }),
+  senderUser: one(users, {
+    fields: [portalMessages.senderUserId],
     references: [users.id]
   })
 }));
@@ -392,6 +451,17 @@ export const insertComplianceDeadlineSchema = createInsertSchema(complianceDeadl
   createdAt: true
 });
 
+export const insertPortalUserSchema = createInsertSchema(portalUsers).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+
+export const insertPortalMessageSchema = createInsertSchema(portalMessages).omit({
+  id: true,
+  createdAt: true
+});
+
 // Type exports
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -431,3 +501,9 @@ export type InsertInvoiceItem = z.infer<typeof insertInvoiceItemSchema>;
 
 export type ComplianceDeadline = typeof complianceDeadlines.$inferSelect;
 export type InsertComplianceDeadline = z.infer<typeof insertComplianceDeadlineSchema>;
+
+export type PortalUser = typeof portalUsers.$inferSelect;
+export type InsertPortalUser = z.infer<typeof insertPortalUserSchema>;
+
+export type PortalMessage = typeof portalMessages.$inferSelect;
+export type InsertPortalMessage = z.infer<typeof insertPortalMessageSchema>;

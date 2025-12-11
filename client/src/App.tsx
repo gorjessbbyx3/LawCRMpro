@@ -1,9 +1,10 @@
-import { Switch, Route, Redirect } from "wouter";
+import { Switch, Route, Redirect, useRoute } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
+import { PortalAuthProvider } from "@/lib/portal-auth";
 import NotFound from "@/pages/not-found";
 import Login from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
@@ -20,6 +21,15 @@ import Compliance from "@/pages/compliance";
 import Settings from "@/pages/settings";
 import Sidebar from "@/components/layout/sidebar";
 import TopBar from "@/components/layout/topbar";
+import PortalLogin from "@/pages/portal/portal-login";
+import PortalDashboard from "@/pages/portal/portal-dashboard";
+import PortalCases from "@/pages/portal/portal-cases";
+import PortalInvoices from "@/pages/portal/portal-invoices";
+import PortalMessages from "@/pages/portal/portal-messages";
+import PortalEvents from "@/pages/portal/portal-events";
+import PortalProfile from "@/pages/portal/portal-profile";
+import PortalAcceptInvitation from "@/pages/portal/portal-accept-invitation";
+import PortalLayout from "@/components/portal-layout";
 
 function ProtectedRoute({ component: Component }: { component: () => JSX.Element }) {
   const { user, isLoading } = useAuth();
@@ -213,6 +223,29 @@ function Router() {
           </div>
         )} />
       </Route>
+      
+      {/* Portal Routes */}
+      <Route path="/portal/login" component={PortalLogin} />
+      <Route path="/portal/accept-invitation" component={PortalAcceptInvitation} />
+      <Route path="/portal">
+        <PortalLayout><PortalDashboard /></PortalLayout>
+      </Route>
+      <Route path="/portal/cases/:id?">
+        <PortalLayout><PortalCases /></PortalLayout>
+      </Route>
+      <Route path="/portal/invoices">
+        <PortalLayout><PortalInvoices /></PortalLayout>
+      </Route>
+      <Route path="/portal/events">
+        <PortalLayout><PortalEvents /></PortalLayout>
+      </Route>
+      <Route path="/portal/messages">
+        <PortalLayout><PortalMessages /></PortalLayout>
+      </Route>
+      <Route path="/portal/profile">
+        <PortalLayout><PortalProfile /></PortalLayout>
+      </Route>
+      
       <Route component={NotFound} />
     </Switch>
   );
@@ -222,10 +255,12 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Router />
-        </TooltipProvider>
+        <PortalAuthProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Router />
+          </TooltipProvider>
+        </PortalAuthProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

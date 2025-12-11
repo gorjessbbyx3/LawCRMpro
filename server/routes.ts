@@ -13,8 +13,11 @@ import {
   authMiddleware, optionalAuthMiddleware, requireRole,
   type AuthRequest 
 } from "./auth";
+import { registerPortalRoutes } from "./portalRoutes";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Register portal routes
+  registerPortalRoutes(app);
   
   // Authentication Routes (public)
   app.post("/api/auth/login", async (req, res) => {
