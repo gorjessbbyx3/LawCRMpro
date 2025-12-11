@@ -3,7 +3,7 @@
 ## Overview
 Enterprise-grade legal practice management system built for Hawaii attorneys with comprehensive case management, time tracking, billing, compliance, and AI-powered features.
 
-## Current Status (November 14, 2025)
+## Current Status (December 11, 2025)
 
 ### ✅ Completed Features
 
@@ -60,6 +60,38 @@ Enterprise-grade legal practice management system built for Hawaii attorneys wit
 - **Filters** by case, client, event type, status, date range
 - **Validation**: start time must be before end time
 - **Reminders endpoint** for upcoming events (client-side polling)
+
+#### Client Portal (Phase 6)
+- **Separate authentication system** with JWT tokens (portal_token cookie) isolated from attorney auth
+- **Portal user management**: portal_users table linked to clients with password hashing
+- **Invitation flow**: Attorneys create 7-day expiring invitation tokens, clients accept and set password
+- **Client dashboard**: View case counts, pending invoices, upcoming events at a glance
+- **Cases viewer**: Read-only access to client's own cases with status tracking
+- **Invoices viewer**: View and track invoice status and amounts
+- **Calendar events**: View scheduled hearings, deadlines, and meetings
+- **Messaging system**: portal_messages table for client-attorney communication per case
+- **Profile management**: Update phone and change password with current password verification
+
+**Security Features:**
+- All portal routes scoped by clientId from authenticated portal user
+- Case ownership validation before allowing message access
+- Invitation tokens expire after 7 days and are cleared upon acceptance
+- Single-use token enforcement - token set to null after account activation
+- Separate middleware stack (portalAuthMiddleware) from attorney routes
+
+**Portal Routes:**
+- `POST /api/portal/auth/login` - Portal user login
+- `POST /api/portal/auth/logout` - Clear portal session
+- `GET /api/portal/auth/me` - Get current portal user
+- `POST /api/portal/auth/accept-invitation` - Accept invitation and set password
+- `GET /api/portal/auth/verify-invitation/:token` - Verify invitation token
+- `GET /api/portal/dashboard` - Get client dashboard data
+- `GET /api/portal/cases` - List client's cases
+- `GET /api/portal/invoices` - List client's invoices
+- `GET /api/portal/events` - List client's calendar events
+- `GET/POST /api/portal/messages` - Read and send messages
+- `GET/PATCH /api/portal/profile` - View and update profile
+- `POST /api/portal/invitations` - Attorney creates invitation (attorney auth required)
 
 ### 🚧 In Progress
 
@@ -143,9 +175,19 @@ Enterprise-grade legal practice management system built for Hawaii attorneys wit
 - **Hawaii-specific features**: CLE tracking, statutes, court resources, inter-island travel
 - **Auto-updates**: User profile changes propagate immediately across entire platform
 
-## Recent Changes (November 14, 2025)
+## Recent Changes (December 11, 2025)
 
-### Phase 4 & 5 Complete - Documents and Calendar (Latest)
+### Phase 6 Complete - Client Portal (Latest)
+- **Portal database schema**: Created portal_users and portal_messages tables with proper relationships
+- **Separate authentication**: Portal uses portal_token cookie with isolated JWT system from attorney auth
+- **Invitation system**: 7-day expiring tokens, single-use enforcement, token cleared upon acceptance
+- **Portal dashboard**: Client sees case counts, pending invoices, upcoming events at a glance
+- **Read-only viewers**: Cases, invoices, and calendar events with proper client scoping
+- **Messaging**: Client-attorney communication with case association and ownership validation
+- **Profile management**: Phone updates and password changes with current password verification
+- **Frontend pages**: Login, accept invitation, dashboard, cases, invoices, events, messages, profile
+
+### Phase 4 & 5 Complete - Documents and Calendar
 - **Documents backend**: Full CRUD with object storage integration and ACL enforcement
 - **Documents ACL security fix**: Listing now filters by `uploadedById === userId OR isTemplate === true`
 - **Documents frontend**: Fixed 7 LSP errors, upload UI with ObjectUploader, Hawaii court forms section
