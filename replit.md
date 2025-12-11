@@ -177,7 +177,14 @@ Enterprise-grade legal practice management system built for Hawaii attorneys wit
 
 ## Recent Changes (December 11, 2025)
 
-### GoDaddy Email Integration (Latest)
+### Mobile Responsiveness (Latest)
+- **MainLayout component**: Created reusable layout using Shadcn SidebarProvider with built-in mobile hamburger menu
+- **App.tsx refactored**: Uses MainLayout pattern to eliminate repeated sidebar/topbar code
+- **Responsive header**: Smaller padding, text sizes, and hidden elements on mobile
+- **Responsive pages**: Dashboard and Clients pages have responsive padding (p-4 sm:p-6) and gaps
+- **Shadcn sidebar features**: Automatic hamburger trigger on mobile, overlay sidebar, collapsible on desktop
+
+### GoDaddy Email Integration
 - **Email service module**: server/email.ts with GoDaddy SMTP configuration (smtpout.secureserver.net)
 - **Email templates**: Portal invitations, invoice notifications, event reminders, message notifications
 - **Auto-send invitations**: Portal invitations automatically email clients when email is configured
